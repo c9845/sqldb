@@ -15,16 +15,7 @@ multiple databases. If you need to connect to multiple databases you will need t
 the configs and connections separately outside this package.
 
 TODO:
-- close connection to db (internal or external config).
-- build column string
-	- helper funcs for select, insert, update.
-- IsDb... funcs (internal or external config).
-- translate
-	- separate file?
-	- lots of docs for this.
-- getsqlite version func.
-	- maybe same for mariadb & sqlite?
-- deploy schema tooling
+- deploy scshema tooling
 	- define deploy func type
 	- how to handle order of deploy funcs? user provides a slice input which maintains order?
 	- create database
@@ -117,13 +108,23 @@ type Config struct {
 	//for when you have long-running reads on the database that are blocking access for writes.
 	SQLitePragmaJournalMode journalMode
 
-	//MapperFunc is used to override the mapping of database column names to struct field names. By
-	//default this sets the database to map column names to struct tags without any modification. This
-	//is the opposite of the slqx driver that lowercases all column names. This package does not modify
-	//column name mappings to reduce the need for struct tags on fields (since if column names match
-	//stuct fields exactly, then we don't need tags). See the following link for more info:
+	//MapperFunc is used to override the mapping of database column names to struct field names or
+	//struct tags. Mapping of column names is used during queries where StructScan(), Get(), or
+	//Select() is used. By default, column names are not modified in any manner, unlike the default
+	//for sqlx where column names are returned as all lower case. The default of not modifying column
+	//names is more useful in our option since you will not need to use struct tags as much since
+	//column names will more likely match exportable struct fields (with upper case first letter).
 	//http://jmoiron.github.io/sqlx/#:~:text=You%20can%20use%20the%20db%20struct%20tag%20to%20specify%20which%20column%20name%20maps%20to%20each%20struct%20field%2C%20or%20set%20a%20new%20default%20mapping%20with%20db.MapperFunc().%20The%20default%20behavior%20is%20to%20use%20strings.Lower%20on%20the%20field%20name%20to%20match%20against%20the%20column%20names.
 	MapperFunc func(string) string
+
+	//TranslateCreateFuncs is the list of functions run against a CREATE query to translate
+	//it from one database format to another. This list is populated initially with funcs
+	//defined in this package when New...Config() or Default...Config() funcs are called.
+	//However, this list can be modified by providing your own list of funcs. This functionality
+	//is provided to support multiple database types for a single app; as in you define the CREATE
+	//query for MariaDB but you give your users an option to deploy MariaDB or SQLite but you don't
+	//want to have to rewrite your CREATE queries each time for each database type.
+	TranslateCreateFuncs []TranslateFunc
 
 	//driver is the database driver type chosen based on the Type provided. This will match one of
 	//the values per the golang sql drivers. This is set once Connect() is called.
@@ -144,13 +145,6 @@ const (
 var (
 	defaultMapperFunc = func(s string) string { return s }
 )
-
-//Columns is used to hold columns for a query. This helps in organizing a query you are building.
-type Columns []string
-
-//Bindvars holds the parameters you want to use in a query. This helps in organizing a query you are
-//building.
-type Bindvars []interface{}
 
 //errors
 var (
@@ -188,6 +182,16 @@ var (
 	//a SQLite database. This shouldn't really ever occur since user has to use a defined
 	//journalling mode.
 	ErrInvalidJournalMode = errors.New("sqldb: Invalid SQLite journal mode")
+
+	//ErrNoColumnsGiven is returned when user is trying to build a column list for a query but
+	//not columns were provided.
+	ErrNoColumnsGiven = errors.New("sqldb: No columns provided")
+
+	//ErrDoubleCommaInColumnString is returned when building a column string for a query but
+	//a double comma exists which would cause the query to not run correctly. Double commas
+	//are usually due to an empty column name being provided or a comma being added to the
+	//column name by mistake.
+	ErrDoubleCommaInColumnString = errors.New("sqldb: Extra comma in column name")
 )
 
 //config is the package level saved config. This stores your config when you want to store it for
@@ -206,6 +210,7 @@ func NewSQLiteConfig(pathToFile string) (c Config, err error) {
 		SQLitePath:              pathToFile,
 		SQLitePragmaJournalMode: defaultSQLiteJournalMode,
 		MapperFunc:              defaultMapperFunc,
+		TranslateCreateFuncs:    defaultTranslateCreateFuncs(),
 	}
 
 	//validate the config so we can make sure user provided valid value(s). validate will be
@@ -245,13 +250,14 @@ func DefaultSQLiteConfig(pathToFile string) (err error) {
 //app. The config will not be saved to the package level var for global use.
 func NewMySQLConfig(host string, port uint, name, user, password string) (c Config, err error) {
 	c = Config{
-		Type:       DBTypeMariaDB,
-		Host:       host,
-		Port:       port,
-		Name:       name,
-		User:       user,
-		Password:   password,
-		MapperFunc: defaultMapperFunc,
+		Type:                 DBTypeMariaDB,
+		Host:                 host,
+		Port:                 port,
+		Name:                 name,
+		User:                 user,
+		Password:             password,
+		MapperFunc:           defaultMapperFunc,
+		TranslateCreateFuncs: defaultTranslateCreateFuncs(),
 	}
 
 	//validate the config so we can make sure user provided valid value(s). validate will be
@@ -390,6 +396,67 @@ func isJournalModeValid(needle journalMode, haystack []journalMode) bool {
 	return false
 }
 
+//buildConnectionString creates the string used to connect to a database. The connection string
+//returned is build for a specific database type since each type has different parameters needed
+//for the connection.
+//Note that when building the connection string for mysql or mariadb, we have to skip the database
+//name if we are deploying the database, since, obviously, the database doesn't exist yet.
+func (c *Config) buildConnectionString(deployingDB bool) (connString string) {
+	switch c.Type {
+	case DBTypeMariaDB, DBTypeMySQL:
+		//for mysql or mariadb, use connection string tooling and formatter
+		dbConnectionConfig := mysql.NewConfig()
+		dbConnectionConfig.User = c.User
+		dbConnectionConfig.Passwd = c.Password
+		dbConnectionConfig.Net = "tcp"
+		dbConnectionConfig.Addr = net.JoinHostPort(c.Host, strconv.Itoa(int(c.Port)))
+
+		if !deployingDB {
+			dbConnectionConfig.DBName = c.Name
+		}
+
+		connString = dbConnectionConfig.FormatDSN()
+
+	case DBTypeSQLite:
+		//For sqlite, the connection string is simply a path to a file, however we do
+		//have to add extra pragma stuff based on journaling mode we want sqlite to be
+		//in. We set the pragma at the time of connection instead of via queries once
+		//the db is connected just for ease, simplicity, and not having to run a bunch
+		//of queries.
+		//
+		//Note that since the connection string will have extra stuff appended to it, it
+		//will no longer be a valid path to a file and will cause issues if used as such,
+		//especially on linux systems. You should have already confirmed the path was to
+		//a valid file (or a place where a file can be created).
+		//
+		//For more info on sqlite pragmas, journalling mode, and connection strings:
+		// - https://www.sqlite.org/wal.html
+		// - https://github.com/mattn/go-sqlite3#connection-string
+		connString = c.SQLitePath
+
+		v := url.Values{}
+		if c.SQLitePragmaJournalMode == SQLiteJournalModeWAL {
+			v.Set("_journal_mode", "WAL")
+		} else {
+			//sqlite default
+			v.Set("_journal_mode", "DELETE")
+		}
+
+		u, err := url.Parse(connString)
+		if err != nil {
+			log.Println("Could not parse connection string.", err)
+			return
+		}
+
+		u.RawQuery = v.Encode()
+		connString = u.String()
+
+		//no default since we already validated that the provided db type is a valid value
+	}
+
+	return
+}
+
 //Connect connects to the database. This sets the database driver in the config and saves the
 //connection pool for use in making queries.
 func (c *Config) Connect() (err error) {
@@ -452,63 +519,128 @@ func (c *Config) Connect() (err error) {
 	return
 }
 
-//buildConnectionString creates the string used to connect to a database. The connection string
-//returned is build for a specific database type since each type has different parameters needed
-//for the connection.
-//Note that when building the connection string for mysql or mariadb, we have to skip the database
-//name if we are deploying the database, since, obviously, the database doesn't exist yet.
-func (c *Config) buildConnectionString(deployingDB bool) (connString string) {
-	switch c.Type {
-	case DBTypeMariaDB, DBTypeMySQL:
-		//for mysql or mariadb, use connection string tooling and formatter
-		dbConnectionConfig := mysql.NewConfig()
-		dbConnectionConfig.User = c.User
-		dbConnectionConfig.Passwd = c.Password
-		dbConnectionConfig.Net = "tcp"
-		dbConnectionConfig.Addr = net.JoinHostPort(c.Host, strconv.Itoa(int(c.Port)))
+//Close closes the connection to the database.
+func (c *Config) Close() (err error) {
+	return c.connection.Close()
+}
 
-		if !deployingDB {
-			dbConnectionConfig.DBName = c.Name
-		}
+//GetDefaultConfig returns the package level saved config. The config may or may not be connected
+//to the database (use Connected() func). This is used to return the config to a user for use
+//elsewhere to (1) inspect the config, (2) get a connection to run a query, or (3) connect or
+//disconnect to the database.
+func GetDefaultConfig() (c *Config) {
+	return &config
+}
 
-		connString = dbConnectionConfig.FormatDSN()
+//Connected returns if the config represents an established connection to the database.
+func (c *Config) Connected() bool {
+	return c.connection != nil
+}
 
-	case DBTypeSQLite:
-		//For sqlite, the connection string is simply a path to a file, however we do
-		//have to add extra pragma stuff based on journaling mode we want sqlite to be
-		//in. We set the pragma at the time of connection instead of via queries once
-		//the db is connected just for ease, simplicity, and not having to run a bunch
-		//of queries.
-		//
-		//Note that since the connection string will have extra stuff appended to it, it
-		//will no longer be a valid path to a file and will cause issues if used as such,
-		//especially on linux systems. You should have already confirmed the path was to
-		//a valid file (or a place where a file can be created).
-		//
-		//For more info on sqlite pragmas, journalling mode, and connection strings:
-		// - https://www.sqlite.org/wal.html
-		// - https://github.com/mattn/go-sqlite3#connection-string
-		connString = c.SQLitePath
+//Columns is used to hold columns for a query. This helps in organizing a query you are building.
+type Columns []string
 
-		v := url.Values{}
-		if c.SQLitePragmaJournalMode == SQLiteJournalModeWAL {
-			v.Set("_journal_mode", "WAL")
-		} else {
-			//sqlite default
-			v.Set("_journal_mode", "DELETE")
-		}
+//Bindvars holds the parameters you want to use in a query. This helps in organizing a query
+//you are building.
+type Bindvars []interface{}
 
-		u, err := url.Parse(connString)
-		if err != nil {
-			log.Println("Could not parse connection string.", err)
-			return
-		}
-
-		u.RawQuery = v.Encode()
-		connString = u.String()
-
-		//no default since we already validated that the provided db type is a valid value
+//buildColumnString takes a slice of strings, representing columns, and returns them as
+//a string to be used in a sql SELECT, INSERT, or UPDATE. This simply formats the columns
+//for the query type correctly (concats them together with a seperator and/or parameter
+//placeholder (i.e.: ?)) and returns the parameter placholder string to be used for the
+//VALUES clause in an INSERT query as needed. Using this func instead of building column
+//list manually ensures column list is formatted correctly and count of parameter
+//placeholders match the count of columns.
+func (cols Columns) buildColumnString(forUpdate bool) (colString, valString string, err error) {
+	//make sure at least one column is provided
+	if len(cols) == 0 {
+		err = ErrNoColumnsGiven
+		return
 	}
 
+	//build the strings
+	if forUpdate {
+		//For an UPDATE query, we just append the parameter placeholder to each column
+		//name. The first line here adds the =? to each provided column except the last
+		//in the slice, the second line adds the =? to the last column.
+		colString = strings.Join(cols, "=?,")
+		colString += "=?"
+
+	} else {
+		//For a SELECT or INSERT query, we just append a comma to separate each column.
+		colString = strings.Join(cols, ",")
+
+		//We also need a list of parameter placeholders, also separated by commas. However,
+		//the final comma after the last placeholder needs to be stripped to not cause errors.
+		valString = strings.Repeat("?,", len(cols))
+		valString = valString[:len(valString)-1]
+	}
+
+	//Check for any double commas. This is usually caused by a column name being given with
+	//a comma already appended or an empty column was provided.
+	if idx := strings.Index(colString, ",,"); idx != -1 {
+		err = ErrDoubleCommaInColumnString
+		return
+	}
+
+	return
+}
+
+//ForSelect builds the column string for a SELECT query.
+func (c Columns) ForSelect() (colString string, err error) {
+	colString, _, err = c.buildColumnString(false)
+	return
+}
+
+//ForInsert builds the column string for an INSERT query.
+func (c Columns) ForInsert() (colString, valString string, err error) {
+	colString, valString, err = c.buildColumnString(false)
+	return
+}
+
+//ForUpdate builds the column string for an UPDATE query.
+func (c Columns) ForUpdate() (colString string, err error) {
+	colString, _, err = c.buildColumnString(true)
+	return
+}
+
+//IsSQLite returns true if the database is a SQLite database. This is easier
+//than checking for equality against the Type field in the config (c.Type == sqldb.DBTypeSQLite).
+func (c *Config) IsSQLite() bool {
+	return c.Type == DBTypeSQLite
+}
+
+//IsMySQL returns true if the database is a MySQL database. This is easier
+//than checking for equality against the Type field in the config (c.Type == sqldb.DBTypeSQLite).
+func (c *Config) IsMySQL() bool {
+	return c.Type == DBTypeMySQL
+}
+
+//IsMariaDB returns true if the database is a MariaDb database. This is easier
+//than checking for equality against the Type field in the config (c.Type == sqldb.DBTypeSQLite).
+func (c *Config) IsMariaDB() bool {
+	return c.Type == DBTypeMariaDB
+}
+
+//IsMySQLOrMariaDB returns if the database is a MySQL or MariaDB. This is useful
+//since MariaDB is a fork of MySQL and most things are compatible; this way you
+//don't need to check IsMySQL and IsMariaDB.
+func (c *Config) IsMySQLOrMariaDB() bool {
+	return c.Type == DBTypeMySQL || c.Type == DBTypeMariaDB
+}
+
+//GetSQLiteVersion returns the version of SQLite that is embedded into the app. This is
+//used for diagnostics. This works by creating a temporary in-memory SQLite database to
+//run query against.
+func GetSQLiteVersion() (version string, err error) {
+	conn, err := sqlx.Open("sqlite3", ":memory:")
+	if err != nil {
+		return
+	}
+	defer conn.Close()
+
+	//query for version
+	q := "SELECT sqlite_version()"
+	err = conn.Get(&version, q)
 	return
 }
