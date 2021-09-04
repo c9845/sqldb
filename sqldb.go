@@ -13,20 +13,6 @@ package level variable for global use, or return the config and store it elsewhe
 app. Storing the database connection within this package prevents you from connecting to
 multiple databases. If you need to connect to multiple databases you will need to store
 the configs and connections separately outside this package.
-
-TODO:
-- deploy scshema tooling
-	- define deploy func type
-	- how to handle order of deploy funcs? user provides a slice input which maintains order?
-	- create database
-	- creating of tables, inserting of data is left up to user via deploy funcs.
-- update schema tooling
-	- similar to deploy funcs but separate update funcs just for organizing and making sure update funcs aren't provided in deploy func list (or vice versa).
-	- handle Update schema erros funcs?
-		- or should this be separate/user defined?
-		- lots to catch here...could be messy.
-- tests!
-
 */
 package sqldb
 
@@ -266,7 +252,7 @@ func DefaultSQLiteConfig(pathToFile string) (err error) {
 //app. The config will not be saved to the package level var for global use.
 func NewMySQLConfig(host string, port uint, name, user, password string) (c Config, err error) {
 	c = Config{
-		Type:       DBTypeMariaDB,
+		Type:       DBTypeMySQL,
 		Host:       host,
 		Port:       port,
 		Name:       name,
