@@ -117,14 +117,25 @@ type Config struct {
 	//http://jmoiron.github.io/sqlx/#:~:text=You%20can%20use%20the%20db%20struct%20tag%20to%20specify%20which%20column%20name%20maps%20to%20each%20struct%20field%2C%20or%20set%20a%20new%20default%20mapping%20with%20db.MapperFunc().%20The%20default%20behavior%20is%20to%20use%20strings.Lower%20on%20the%20field%20name%20to%20match%20against%20the%20column%20names.
 	MapperFunc func(string) string
 
-	//TranslateCreateFuncs is the list of functions run against a CREATE query to translate
+	//TranslateCreateTableFuncs is the list of functions run against a CREATE query to translate
 	//it from one database format to another. This list is populated initially with funcs
 	//defined in this package when New...Config() or Default...Config() funcs are called.
 	//However, this list can be modified by providing your own list of funcs. This functionality
 	//is provided to support multiple database types for a single app; as in you define the CREATE
 	//query for MariaDB but you give your users an option to deploy MariaDB or SQLite but you don't
 	//want to have to rewrite your CREATE queries each time for each database type.
-	TranslateCreateFuncs []TranslateFunc
+	TranslateCreateTableFuncs []TranslateFunc
+
+	//DeployFuncs is the list of functions used to deploy the database schema. Each func in
+	//this list should run a single query used to deploy a table or insert some initial data
+	//into a table. Note that the order in which you list funcs here is important since you
+	//need to have a table a foreign key refers to deployed first and tables you want to insert
+	//data into already deployed.
+	DeployFuncs []DeployFunc
+
+	//UpdateFuncs is the list of functions used to update the database schema or modify data
+	//stored in the database. Each func in this list should run a single query.
+	UpdateFuncs []UpdateFunc
 
 	//driver is the database driver type chosen based on the Type provided. This will match one of
 	//the values per the golang sql drivers. This is set once Connect() is called.
@@ -210,7 +221,12 @@ func NewSQLiteConfig(pathToFile string) (c Config, err error) {
 		SQLitePath:              pathToFile,
 		SQLitePragmaJournalMode: defaultSQLiteJournalMode,
 		MapperFunc:              defaultMapperFunc,
-		TranslateCreateFuncs:    defaultTranslateCreateFuncs(),
+		TranslateCreateTableFuncs: []TranslateFunc{
+			TFToSQLiteReformatID,
+			TFToSQLiteRemovePrimaryKeyDefinition,
+			TFHandleSQLiteDefaultTimestamp,
+			TFHandleSQLiteDatetimeColumns,
+		},
 	}
 
 	//validate the config so we can make sure user provided valid value(s). validate will be
@@ -250,14 +266,13 @@ func DefaultSQLiteConfig(pathToFile string) (err error) {
 //app. The config will not be saved to the package level var for global use.
 func NewMySQLConfig(host string, port uint, name, user, password string) (c Config, err error) {
 	c = Config{
-		Type:                 DBTypeMariaDB,
-		Host:                 host,
-		Port:                 port,
-		Name:                 name,
-		User:                 user,
-		Password:             password,
-		MapperFunc:           defaultMapperFunc,
-		TranslateCreateFuncs: defaultTranslateCreateFuncs(),
+		Type:       DBTypeMariaDB,
+		Host:       host,
+		Port:       port,
+		Name:       name,
+		User:       user,
+		Password:   password,
+		MapperFunc: defaultMapperFunc,
 	}
 
 	//validate the config so we can make sure user provided valid value(s). validate will be
