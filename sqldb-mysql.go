@@ -18,7 +18,6 @@ func NewMySQLConfig(host string, port uint, name, user, password string) (c *Con
 func DefaultMySQLConfig(host string, port uint, name, user, password string) {
 	cfg := NewMySQLConfig(host, port, name, user, password)
 	config = *cfg
-	return
 }
 
 //IsMySQL returns true if the database is a MySQL database. This is easier

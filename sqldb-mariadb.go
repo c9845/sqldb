@@ -12,7 +12,6 @@ func NewMariaDBConfig(host string, port uint, name, user, password string) (c *C
 func DefaultMariaDBConfig(host string, port uint, name, user, password string) {
 	cfg := NewMariaDBConfig(host, port, name, user, password)
 	config = *cfg
-	return
 }
 
 //IsMariaDB returns true if the database is a MariaDb database. This is easier

@@ -23,7 +23,6 @@ func NewSQLiteConfig(pathToFile string) (c *Config) {
 func DefaultSQLiteConfig(pathToFile string) {
 	cfg := NewSQLiteConfig(pathToFile)
 	config = *cfg
-	return
 }
 
 //IsSQLite returns true if the database is a SQLite database. This is easier

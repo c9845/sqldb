@@ -65,8 +65,7 @@ func (c *Config) DeploySchema(dontInsert bool) (err error) {
 	switch c.Type {
 	case DBTypeMySQL, DBTypeMariaDB:
 		q := `CREATE DATABASE IF NOT EXISTS ` + c.Name
-		connection := c.Connection()
-		_, innerErr := connection.Exec(q)
+		_, innerErr := conn.Exec(q)
 		if innerErr != nil {
 			err = innerErr
 			return

@@ -181,17 +181,8 @@ func UFDropUnknownColumn(c Config, query string, err error) bool {
 //old data to the new table, delete the old table, and rename the new table to the old
 //table.
 func UFModifySQLiteColumn(c Config, query string, err error) bool {
-	//ignore non-sqlite databases
-	if c.Type != DBTypeSQLite {
-		if c.Debug {
-			log.Println("  Ignoring query, database not sqlite")
-		}
-
-		return true
-	}
-
-	//ignore queries that modify a column
-	if strings.Contains(strings.ToUpper(query), "MODIFY COLUMN") {
+	//ignore queries that modify a column for sqlite dbs
+	if strings.Contains(strings.ToUpper(query), "MODIFY COLUMN") && c.Type == DBTypeSQLite {
 		if c.Debug {
 			log.Println("  Ignoring query, " + err.Error())
 		}
