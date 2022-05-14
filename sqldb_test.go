@@ -178,38 +178,20 @@ func TestValidate(t *testing.T) {
 		return
 	}
 
-	c.SQLitePragmaJournalMode = "bad"
-	err = c.validate()
-	if err != ErrInvalidJournalMode {
-		t.Fatal("ErrInvalidJournalMode should have occured but didnt")
-		return
-	}
-
 	//Test End<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
 
 	//Test Start>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 	//Bad db type, which should never occur.
-	c = NewConfig("bad-db-type")
+	c, err = NewConfig(DBTypeMySQL)
+	if err != nil {
+		t.Fatal(err)
+		return
+	}
+
+	c.Type = "ppop" //setting to a string which gets autocorrected to the dbType type even though the value is invalid.
 	err = c.validate()
-	if err != ErrInvalidDBType {
-		t.Fatal("ErrInvalidDBType should have occured but didnt")
-		return
-	}
-	//Test End<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
-}
-
-func TestIsJournalModeValid(t *testing.T) {
-	m := defaultSQLiteJournalMode
-	yes := isJournalModeValid(m, validJournalModes)
-	if !yes {
-		t.Fatal("Journal mode should be valid")
-		return
-	}
-
-	m = "bad"
-	yes = isJournalModeValid(m, validJournalModes)
-	if yes {
-		t.Fatal("Journal mode should NOT be valid")
+	if err == nil {
+		t.Fatal("Error about bad db type should have occured in validate.")
 		return
 	}
 	//Test End<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<

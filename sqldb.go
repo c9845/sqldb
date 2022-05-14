@@ -175,12 +175,11 @@ const (
 	SQLiteJournalModeWAL      = journalMode("WAL")
 )
 
-var validJournalModes = []journalMode{
-	SQLiteJournalModeRollback,
-	SQLiteJournalModeWAL,
-}
-
-//JournalMode returns a journalMode.
+//JournalMode returns a journalMode. This is provided so that other journal modes
+//besides the const defined Rollback/DELETE and WAL can be used (ex.: TRUNCATE).
+//Providing this tooling allows for a more "I meant that" appearance in code when
+//using a non-const defined journal mode. This is also why a "Valid()" func is not
+//defined for journalMode since other modes can be provided.
 func JournalMode(s string) journalMode {
 	return journalMode(s)
 }
@@ -223,11 +222,6 @@ var (
 	//ErrPasswordNotProvided is returned when user doesn't provide the password to connect to the
 	//database with. We do not support blank passwords for security.
 	ErrPasswordNotProvided = errors.New("sqldb: Password for database user not provided")
-
-	//ErrInvalidJournalMode is returned when user provides an invalid journalling mode for
-	//a SQLite database. This shouldn't really ever occur since user has to use a defined
-	//journalling mode.
-	ErrInvalidJournalMode = errors.New("sqldb: Invalid SQLite journal mode")
 
 	//ErrNoColumnsGiven is returned when user is trying to build a column list for a query but
 	//not columns were provided.
@@ -302,9 +296,11 @@ func (c *Config) validate() (err error) {
 		if c.SQLitePragmaJournalMode == "" {
 			c.SQLitePragmaJournalMode = defaultSQLiteJournalMode
 		}
-		if !isJournalModeValid(c.SQLitePragmaJournalMode, validJournalModes) {
-			return ErrInvalidJournalMode
-		}
+
+		//We don't check if journal mode is valid since non-const defined journal
+		//modes can also be provided. This allows for using other SQLite journal
+		//modes that aren't defined in this package. An error will most likely be
+		//kicked out by SQLite when setting the journal mode if it is invalid.
 
 	case DBTypeMySQL, DBTypeMariaDB:
 		if c.Host == "" {
@@ -325,18 +321,6 @@ func (c *Config) validate() (err error) {
 	}
 
 	return
-}
-
-//isJournalModeValid checks if a provided journal mode is a valid supported database type.
-//This is used in validate() to clean up code.
-func isJournalModeValid(needle journalMode, haystack []journalMode) bool {
-	for _, h := range haystack {
-		if h == needle {
-			return true
-		}
-	}
-
-	return false
 }
 
 //buildConnectionString creates the string used to connect to a database. The connection string
