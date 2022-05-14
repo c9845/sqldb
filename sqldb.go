@@ -49,6 +49,7 @@ import (
 
 	"github.com/go-sql-driver/mysql" //mysql and mariadb, not an empty import b/c we use it to generate the connection string
 	_ "github.com/mattn/go-sqlite3"  //sqlite
+	"golang.org/x/exp/slices"
 
 	"github.com/jmoiron/sqlx"
 )
@@ -155,9 +156,15 @@ var validDBTypes = []dbType{
 	DBTypeSQLite,
 }
 
-//DBType returns a dbType.
-func DBType(s string) dbType {
-	return dbType(s)
+//valid checks if a provided dbType is one of our supported databases. This is used
+//when validating db config/connection information.
+func (t dbType) valid() error {
+	contains := slices.Contains(validDBTypes, t)
+	if contains {
+		return nil
+	}
+
+	return fmt.Errorf("invalid db type, should be one of '%s', got '%s'", validDBTypes, t)
 }
 
 //Supported SQLite journal modes.
@@ -240,18 +247,26 @@ var config Config
 
 //NewConfig returns a base configuration that will need to be modified for use with a db.
 //Typically you would use New...Config() instead.
-func NewConfig(t dbType) *Config {
-	return &Config{
+func NewConfig(t dbType) (c *Config, err error) {
+	err = t.valid()
+	if err != nil {
+		return
+	}
+
+	c = &Config{
 		Type:       t,
 		MapperFunc: DefaultMapperFunc,
 	}
+	return
 }
 
 //DefaultConfig initializes the package level config. This wraps around NewConfig(). Typically
 //you would use Default...Config() instead.
-func DefaultConfig(t dbType) {
-	cfg := NewConfig(t)
+func DefaultConfig(t dbType) (err error) {
+	cfg, err := NewConfig(t)
 	config = *cfg
+
+	return
 }
 
 //Save saves a configuration to the package level config. Use this in conjunction with New...Config
@@ -262,13 +277,21 @@ func Save(c Config) {
 	config = c
 }
 
-//validate handles validation of a provided config.
+//validate handles validation of a provided config. This is called in Connect().
 func (c *Config) validate() (err error) {
 	//sanitize
 	c.SQLitePath = strings.TrimSpace(c.SQLitePath)
 	c.Host = strings.TrimSpace(c.Host)
 	c.Name = strings.TrimSpace(c.Name)
 	c.User = strings.TrimSpace(c.User)
+
+	//Make sure db type is valid. A user can modify this to a string via
+	//"c.Type = 'asdf'" even though Type has a specific dbType type. This catches
+	//this slight possibility.
+	err = c.Type.valid()
+	if err != nil {
+		return
+	}
 
 	//check config based on db type since each type of db has different requirements
 	switch c.Type {
@@ -299,11 +322,6 @@ func (c *Config) validate() (err error) {
 		if c.Password == "" {
 			return ErrPasswordNotProvided
 		}
-
-	default:
-		//we should never hit this "default" case since user has to provide on our our
-		//defined db types.
-		return ErrInvalidDBType
 	}
 
 	return

@@ -17,7 +17,9 @@ const (
 
 //NewSQLiteConfig returns a config for connecting to a SQLite database.
 func NewSQLiteConfig(pathToFile string) (c *Config) {
-	c = NewConfig(DBTypeSQLite)
+	//Returned error is ignored since it only returns if a bad db type is provided
+	//and we are providing a known good db type here.
+	c, _ = NewConfig(DBTypeSQLite)
 
 	c.SQLitePath = pathToFile
 	c.SQLitePragmaJournalMode = defaultSQLiteJournalMode

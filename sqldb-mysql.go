@@ -2,7 +2,9 @@ package sqldb
 
 //NewMySQLConfig returns a config for connecting to a MySQL database.
 func NewMySQLConfig(host string, port uint, name, user, password string) (c *Config) {
-	c = NewConfig(DBTypeMySQL)
+	//Returned error is ignored since it only returns if a bad db type is provided
+	//and we are providing a known good db type here.
+	c, _ = NewConfig(DBTypeMySQL)
 
 	c.Host = host
 	c.Port = port

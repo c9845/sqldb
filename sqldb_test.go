@@ -7,13 +7,24 @@ import (
 )
 
 func TestNewConfig(t *testing.T) {
-	c := NewConfig(DBTypeMariaDB)
+	c, err := NewConfig(DBTypeMariaDB)
+	if err != nil {
+		t.Fatal(err)
+		return
+	}
 	if c == nil {
 		t.Fatal("No config returned")
 		return
 	}
 	if c.Type != DBTypeMariaDB {
-		t.Fatal("Config doens't match")
+		t.Fatal("Config doesn't match")
+		return
+	}
+
+	//test with bad db type
+	c, err = NewConfig("maybe")
+	if err == nil {
+		t.Fatal("Error about invalid db type should have occured.")
 		return
 	}
 }
@@ -100,8 +111,12 @@ func TestNewMariaDBConfig(t *testing.T) {
 func TestValidate(t *testing.T) {
 	//Test Start>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 	//Test MariaDB/MySQL with missing stuff.
-	c := NewConfig(DBTypeMariaDB)
-	err := c.validate()
+	c, err := NewConfig(DBTypeMariaDB)
+	if err != nil {
+		t.Fatal(err)
+		return
+	}
+	err = c.validate()
 	if err != ErrHostNotProvided {
 		t.Fatal("ErrHostNotProvided should have occured but didnt")
 		return
@@ -145,7 +160,11 @@ func TestValidate(t *testing.T) {
 
 	//Test Start>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 	//Test for SQLite.
-	c = NewConfig(DBTypeSQLite)
+	c, err = NewConfig(DBTypeSQLite)
+	if err != nil {
+		t.Fatal(err)
+		return
+	}
 	err = c.validate()
 	if err != ErrSQLitePathNotProvided {
 		t.Fatal("ErrSQLitePathNotProvided should have occured but didnt")
@@ -193,12 +212,17 @@ func TestIsJournalModeValid(t *testing.T) {
 		t.Fatal("Journal mode should NOT be valid")
 		return
 	}
+	//Test End<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
 }
 
 func TestBuildConnectionString(t *testing.T) {
 	//Test Start>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 	//For deploying mysql/mariadb.
-	c := NewConfig(DBTypeMySQL)
+	c, err := NewConfig(DBTypeMySQL)
+	if err != nil {
+		t.Fatal(err)
+		return
+	}
 	c.Host = "10.0.0.1"
 	c.Port = 3306
 	c.User = "user"
@@ -214,7 +238,11 @@ func TestBuildConnectionString(t *testing.T) {
 
 	//Test Start>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 	//For existing mysql/mariadb.
-	c = NewConfig(DBTypeMySQL)
+	c, err = NewConfig(DBTypeMySQL)
+	if err != nil {
+		t.Fatal(err)
+		return
+	}
 	c.Host = "10.0.0.1"
 	c.Port = 3306
 	c.User = "user"
@@ -231,7 +259,11 @@ func TestBuildConnectionString(t *testing.T) {
 
 	//Test Start>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 	//For SQLite.
-	c = NewConfig(DBTypeSQLite)
+	c, err = NewConfig(DBTypeSQLite)
+	if err != nil {
+		t.Fatal(err)
+		return
+	}
 	c.SQLitePath = "/path/to/sqlite.db"
 	connString = c.buildConnectionString(false)
 	if connString != c.SQLitePath {
@@ -270,19 +302,31 @@ func TestGetDriver(t *testing.T) {
 }
 
 func TestIsMySQLOrMariaDB(t *testing.T) {
-	c := NewConfig(DBTypeMySQL)
+	c, err := NewConfig(DBTypeMySQL)
+	if err != nil {
+		t.Fatal(err)
+		return
+	}
 	if !c.IsMySQLOrMariaDB() {
 		t.Fatal("Is mysql")
 		return
 	}
 
-	c = NewConfig(DBTypeMariaDB)
+	c, err = NewConfig(DBTypeMariaDB)
+	if err != nil {
+		t.Fatal(err)
+		return
+	}
 	if !c.IsMySQLOrMariaDB() {
 		t.Fatal("Is mariadb")
 		return
 	}
 
-	c = NewConfig(DBTypeSQLite)
+	c, err = NewConfig(DBTypeSQLite)
+	if err != nil {
+		t.Fatal(err)
+		return
+	}
 	if c.IsMySQLOrMariaDB() {
 		t.Fatal("Is sqlite")
 		return
@@ -290,7 +334,11 @@ func TestIsMySQLOrMariaDB(t *testing.T) {
 }
 
 func TestIsMySQL(t *testing.T) {
-	c := NewConfig(DBTypeMySQL)
+	c, err := NewConfig(DBTypeMySQL)
+	if err != nil {
+		t.Fatal(err)
+		return
+	}
 	if !c.IsMySQL() {
 		t.Fatal("is mysql")
 		return
@@ -298,7 +346,11 @@ func TestIsMySQL(t *testing.T) {
 }
 
 func TestIsMariaDB(t *testing.T) {
-	c := NewConfig(DBTypeMariaDB)
+	c, err := NewConfig(DBTypeMariaDB)
+	if err != nil {
+		t.Fatal(err)
+		return
+	}
 	if !c.IsMariaDB() {
 		t.Fatal("is mariadb")
 		return
@@ -306,7 +358,11 @@ func TestIsMariaDB(t *testing.T) {
 }
 
 func TestIsSQLite(t *testing.T) {
-	c := NewConfig(DBTypeSQLite)
+	c, err := NewConfig(DBTypeSQLite)
+	if err != nil {
+		t.Fatal(err)
+		return
+	}
 	if !c.IsSQLite() {
 		t.Fatal("is sqlite")
 		return
@@ -390,7 +446,7 @@ func TestConnect(t *testing.T) {
 		return
 	}
 	if c.Type != DBTypeSQLite {
-		t.Fatal("Config doens't match")
+		t.Fatal("Config doesn't match")
 		return
 	}
 
@@ -411,7 +467,7 @@ func TestClose(t *testing.T) {
 		return
 	}
 	if c.Type != DBTypeSQLite {
-		t.Fatal("Config doens't match")
+		t.Fatal("Config doesn't match")
 		return
 	}
 
@@ -443,7 +499,7 @@ func TestConnected(t *testing.T) {
 		return
 	}
 	if c.Type != DBTypeSQLite {
-		t.Fatal("Config doens't match")
+		t.Fatal("Config doesn't match")
 		return
 	}
 
