@@ -403,7 +403,7 @@ func (c *Config) Connect() (err error) {
 	//file. The database file needs to be created first with Deploy().
 	if c.Type == DBTypeSQLite {
 		_, err = os.Stat(c.SQLitePath)
-		if os.IsNotExist(err) {
+		if os.IsNotExist(err) && c.SQLitePath != InMemoryFilePathRacy && c.SQLitePath != InMemoryFilePathRaceSafe {
 			return err
 		}
 	}

@@ -2,6 +2,19 @@ package sqldb
 
 import "github.com/jmoiron/sqlx"
 
+const (
+	//InMemoryFilePathRacy is the "path" to provide for the SQLite file when you want
+	//to use an in-memory database instead of a filesystem file database. This is racy
+	//because each "Connect" call to :memory: will open a brand new database.
+	InMemoryFilePathRacy = ":memory:"
+
+	//InMemoryFilePathRaceSafe is the "path" to provide for the SQLite file when you
+	//want to use an in-memory database between multiple "Connect" calls. This is race
+	//safe since multiple calls of "Connect" will connect to the same in-memory db,
+	//although connecting more than once to the same db would be very odd.
+	InMemoryFilePathRaceSafe = "file::memory:?cache=shared"
+)
+
 //NewSQLiteConfig returns a config for connecting to a SQLite database.
 func NewSQLiteConfig(pathToFile string) (c *Config) {
 	c = NewConfig(DBTypeSQLite)
