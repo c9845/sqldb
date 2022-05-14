@@ -380,3 +380,99 @@ func TestDefaults(t *testing.T) {
 	}
 
 }
+
+func TestConnect(t *testing.T) {
+	//Test with sqlite.
+	//No test with mariadb/mysql b/c we probably don't have a db server accessible.
+	c := NewSQLiteConfig(InMemoryFilePathRacy)
+	if c == nil {
+		t.Fatal("No config returned")
+		return
+	}
+	if c.Type != DBTypeSQLite {
+		t.Fatal("Config doens't match")
+		return
+	}
+
+	err := c.Connect()
+	if err != nil {
+		t.Fatal(err)
+		return
+	}
+	defer c.Close()
+}
+
+func TestClose(t *testing.T) {
+	//Test with sqlite.
+	//No test with mariadb/mysql b/c we probably don't have a db server accessible.
+	c := NewSQLiteConfig(InMemoryFilePathRacy)
+	if c == nil {
+		t.Fatal("No config returned")
+		return
+	}
+	if c.Type != DBTypeSQLite {
+		t.Fatal("Config doens't match")
+		return
+	}
+
+	err := c.Connect()
+	if err != nil {
+		t.Fatal(err)
+		return
+	}
+
+	err = c.Close()
+	if err != nil {
+		t.Fatal(err)
+		return
+	}
+
+	err = c.connection.Ping()
+	if err == nil {
+		t.Fatal("Connection isn't really closed")
+		return
+	}
+}
+
+func TestConnected(t *testing.T) {
+	//Test with sqlite.
+	//No test with mariadb/mysql b/c we probably don't have a db server accessible.
+	c := NewSQLiteConfig(InMemoryFilePathRacy)
+	if c == nil {
+		t.Fatal("No config returned")
+		return
+	}
+	if c.Type != DBTypeSQLite {
+		t.Fatal("Config doens't match")
+		return
+	}
+
+	//test before connecting
+	if c.Connected() {
+		t.Fatal("Connected should be false, never connected")
+		return
+	}
+
+	err := c.Connect()
+	if err != nil {
+		t.Fatal(err)
+		return
+	}
+
+	//connected should be true
+	if !c.Connected() {
+		t.Fatal("Connected should be true")
+		return
+	}
+
+	err = c.Close()
+	if err != nil {
+		t.Fatal(err)
+		return
+	}
+
+	if c.Connected() {
+		t.Fatal("Connected should be false")
+		return
+	}
+}

@@ -377,7 +377,7 @@ func getDriver(t dbType) (driver string, err error) {
 func (c *Config) Connect() (err error) {
 	//Make sure the connection isn't already established to prevent overwriting it. This
 	//forces users to call Close() first to prevent any incorrect db usage.
-	if c.connection != nil {
+	if c.Connected() {
 		return ErrConnected
 	}
 
@@ -476,7 +476,23 @@ func Close() (err error) {
 
 //Connected returns if the config represents an established connection to the database.
 func (c *Config) Connected() bool {
-	return c.connection != nil
+	//a connection has never been established
+	if c.connection == nil {
+		return false
+	}
+
+	//a connection has been established but was wasn't closed
+	//c.connection won't be nil in this case, it still stores the previous connection's
+	//info for some reason. we don't set it to nil in Close() since that isn't how the
+	//underlying sql package handles closing.
+	err := c.connection.Ping()
+	if err != nil {
+		log.Println("sqldb.Connected", err)
+		return false
+	}
+
+	//a connection was been established and is open, ping succeeded
+	return true
 }
 
 //Connected returns if the config represents an established connection to the database.
