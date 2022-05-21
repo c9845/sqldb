@@ -24,10 +24,10 @@ func NewSQLiteConfig(pathToFile string) (c *Config) {
 	c.SQLitePath = pathToFile
 	c.SQLitePragmaJournalMode = defaultSQLiteJournalMode
 	c.TranslateCreateTableFuncs = []TranslateFunc{
-		TFToSQLiteReformatID,
-		TFToSQLiteRemovePrimaryKeyDefinition,
-		TFToSQLiteReformatDefaultTimestamp,
-		TFToSQLiteReformatDatetime,
+		TFMySQLToSQLiteReformatID,
+		TFMySQLToSQLiteRemovePrimaryKeyDefinition,
+		TFMySQLToSQLiteReformatDefaultTimestamp,
+		TFMySQLToSQLiteReformatDatetime,
 	}
 
 	return

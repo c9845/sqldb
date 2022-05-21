@@ -477,15 +477,15 @@ func Close() (err error) {
 
 //Connected returns if the config represents an established connection to the database.
 func (c *Config) Connected() bool {
-	//a connection has never been established
+	//A connection has never been established.
 	if c.connection == nil {
 		return false
 	}
 
-	//a connection has been established but was wasn't closed
-	//c.connection won't be nil in this case, it still stores the previous connection's
-	//info for some reason. we don't set it to nil in Close() since that isn't how the
-	//underlying sql package handles closing.
+	//A connection was been established but was closed. c.connection won't be nil in
+	//this case, it still stores the previous connection's info for some reason. We
+	//don't set it to nil in Close() since that isn't how the sql package handles
+	//closing.
 	err := c.connection.Ping()
 	if err != nil {
 		if c.Debug {

@@ -19,7 +19,7 @@ import (
 func (c *Config) UpdateSchema() (err error) {
 	//Make sure the connection isn't already established to prevent overwriting it. This
 	//forces users to call Close() first to prevent any incorrect db usage.
-	if c.connection != nil {
+	if c.Connected() {
 		return ErrConnected
 	}
 

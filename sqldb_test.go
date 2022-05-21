@@ -1,6 +1,7 @@
 package sqldb
 
 import (
+	"os"
 	"strconv"
 	"strings"
 	"testing"
@@ -470,6 +471,20 @@ func TestClose(t *testing.T) {
 		t.Fatal("Connection isn't really closed")
 		return
 	}
+
+	//call close multiple times to make sure there isn't anything odd that happens
+	//if a user does this.
+	err = c.Close()
+	if err != nil {
+		t.Fatal(err)
+		return
+	}
+
+	err = c.Close()
+	if err != nil {
+		t.Fatal(err)
+		return
+	}
 }
 
 func TestConnected(t *testing.T) {
@@ -485,19 +500,43 @@ func TestConnected(t *testing.T) {
 		return
 	}
 
-	//test before connecting
+	//test before connecting, should be false
 	if c.Connected() {
 		t.Fatal("Connected should be false, never connected")
 		return
 	}
 
+	//connect and test, should be true
 	err := c.Connect()
 	if err != nil {
 		t.Fatal(err)
 		return
 	}
 
-	//connected should be true
+	if !c.Connected() {
+		t.Fatal("Connected should be true")
+		return
+	}
+
+	//disconnect and test, should be false
+	err = c.Close()
+	if err != nil {
+		t.Fatal(err)
+		return
+	}
+
+	if c.Connected() {
+		t.Fatal("Connected should be false")
+		return
+	}
+
+	//connect again, should be true
+	err = c.Connect()
+	if err != nil {
+		t.Fatal(err)
+		return
+	}
+
 	if !c.Connected() {
 		t.Fatal("Connected should be true")
 		return
@@ -508,9 +547,80 @@ func TestConnected(t *testing.T) {
 		t.Fatal(err)
 		return
 	}
+}
 
-	if c.Connected() {
-		t.Fatal("Connected should be false")
+func TestDeploySchema(t *testing.T) {
+	//Test with sqlite in-memory db.
+	//No test with mariadb/mysql b/c we probably don't have a db server accessible.
+	c := NewSQLiteConfig(InMemoryFilePathRacy)
+	if c == nil {
+		t.Fatal("No config returned")
+		return
+	}
+
+	createTable := `
+		CREATE TABLE IF NOT EXISTS users (
+			ID INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+			Username TEXT NOT NULL
+		)
+	`
+	c.DeployQueries = []string{createTable}
+
+	err := c.DeploySchema(false)
+	if err != nil {
+		t.Fatal(err)
+		return
+	}
+}
+
+func TestUpdateSchema(t *testing.T) {
+	//Create temp file. We cannot just use an in memory db since we close and reopen
+	//the db connection between deploying and updating and this will cause the in
+	//memory db to not exist at the update stage.
+	f, err := os.CreateTemp("", "licensekeys-testUpdateSchema.db")
+	if err != nil {
+		t.Fatal(err)
+		return
+	}
+	defer os.Remove(f.Name())
+
+	//Test with sqlite in-memory db.
+	//No test with mariadb/mysql b/c we probably don't have a db server accessible.
+	c := NewSQLiteConfig(f.Name())
+	if c == nil {
+		t.Fatal("No config returned")
+		return
+	}
+
+	//Need to deploy schema first.
+	createTable := `
+		CREATE TABLE IF NOT EXISTS users (
+			ID INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+			Username TEXT NOT NULL
+		)
+	`
+	c.DeployQueries = []string{createTable}
+
+	err = c.DeploySchema(false)
+	if err != nil {
+		t.Fatal(err)
+		return
+	}
+
+	//Make sure database connection is closed, even though DeploySchema calls Close().
+	connected := c.Connected()
+	if connected {
+		t.Fatal("db should be disconnected after DeploySchema() completes")
+		return
+	}
+
+	//Update
+	updateTable := `ALTER TABLE users ADD COLUMN FirstName TEXT`
+	c.UpdateQueries = []string{updateTable}
+
+	err = c.UpdateSchema()
+	if err != nil {
+		t.Fatal(err)
 		return
 	}
 }
