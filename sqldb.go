@@ -193,9 +193,6 @@ const (
 
 //errors
 var (
-	//ErrInvalidDBType is returned when a user provided an database type that we don't support.
-	ErrInvalidDBType = fmt.Errorf("sqldb: invalid db type provided, must be one of the following %s", validDBTypes)
-
 	//ErrConnected is returned when a database connection is already established and a user is
 	//trying to connect or trying to modify a config that is already in use.
 	ErrConnected = errors.New("sqldb: connection already established")
@@ -361,13 +358,15 @@ func (c *Config) buildConnectionString(deployingDB bool) (connString string) {
 
 //getDriver returns the golang sql driver used for the chosen database type.
 func getDriver(t dbType) (driver string, err error) {
+	if err := t.valid(); err != nil {
+		return "", err
+	}
+
 	switch t {
 	case DBTypeMySQL, DBTypeMariaDB:
 		driver = "mysql"
 	case DBTypeSQLite:
 		driver = "sqlite3"
-	default:
-		err = ErrInvalidDBType
 	}
 
 	return
@@ -489,7 +488,10 @@ func (c *Config) Connected() bool {
 	//underlying sql package handles closing.
 	err := c.connection.Ping()
 	if err != nil {
-		log.Println("sqldb.Connected", err)
+		if c.Debug {
+			log.Println("sqldb.Connected", err)
+		}
+
 		return false
 	}
 

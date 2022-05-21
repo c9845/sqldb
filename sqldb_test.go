@@ -277,8 +277,8 @@ func TestGetDriver(t *testing.T) {
 	}
 
 	_, err = getDriver("bad")
-	if err != ErrInvalidDBType {
-		t.Fatal("ErrInvalidDBType should have occured")
+	if err == nil {
+		t.Fatal("error about bad db type should have been returned")
 		return
 	}
 }
