@@ -136,7 +136,7 @@ func (c *Config) DeploySchema(dontInsert bool) (err error) {
 
 	//Run each deploy func.
 	if c.Debug {
-		log.Println("sqldb.DeploySchema (DeployFunc)...")
+		log.Println("sqldb.DeploySchema (DeployFuncs)...")
 	}
 	for _, f := range c.DeployFuncs {
 		//get function name for diagnostics
@@ -155,7 +155,7 @@ func (c *Config) DeploySchema(dontInsert bool) (err error) {
 
 	}
 	if c.Debug {
-		log.Println("sqldb.DeploySchema (DeployFunc)...done")
+		log.Println("sqldb.DeploySchema (DeployFuncs)...done")
 	}
 
 	//Close the connection. We don't want to leave this connection open for further

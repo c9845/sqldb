@@ -501,7 +501,7 @@ func (c *Config) Connected() bool {
 
 //Connected returns if the config represents an established connection to the database.
 func Connected() bool {
-	return config.connection != nil
+	return config.Connected()
 }
 
 //Connection returns the database connection stored in a config for use in running queries
