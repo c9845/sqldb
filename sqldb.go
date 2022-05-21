@@ -488,10 +488,6 @@ func (c *Config) Connected() bool {
 	//closing.
 	err := c.connection.Ping()
 	if err != nil {
-		if c.Debug {
-			log.Println("sqldb.Connected", err)
-		}
-
 		return false
 	}
 
