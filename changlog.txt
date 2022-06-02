@@ -1,1 +1,14 @@
-v1.0.1
+v1.2.0
+----------
+- Allow choosing between mattn and modernc libraries for SQLite.
+    - This helps with cross compiling since mattn required CGO while modernc does not.
+    - Use build tags to choose which library to use at compile time.
+    - mattn is default, for now, if build tag is omitted.
+
+v1.1.1
+----------
+- Fix bug and improve checking if a connection has been closed.
+    - Previously, just relied on checking if connection is nil which doesn't work if connection is closed. This only worked if connection was never established.
+    - Alleviates issues with running UpdateSchema() right after DeploySchema().
+- Renamed translation funcs to specify what database format they translate from and to.
+- Remove unneeded logging.
