@@ -181,6 +181,12 @@ var validDBTypes = []dbType{
 	DBTypeSQLite,
 }
 
+//DBType returns a dbType. This is used when parsing a user-provided db type to match
+//the db types defined in this package.
+func DBType(s string) dbType {
+	return dbType(s)
+}
+
 //valid checks if a provided dbType is one of our supported databases. This is used
 //when validating db config/connection information.
 func (t dbType) valid() error {
