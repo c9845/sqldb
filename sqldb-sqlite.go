@@ -41,8 +41,13 @@ func IsSQLite() bool {
 //used for diagnostics. This works by creating a temporary in-memory SQLite database to
 //run query against.
 func GetSQLiteVersion() (version string, err error) {
+	driver, err := getDriver(DBTypeSQLite)
+	if err != nil {
+		return
+	}
+
 	//connect
-	conn, err := sqlx.Open("sqlite3", ":memory:")
+	conn, err := sqlx.Open(driver, ":memory:")
 	if err != nil {
 		return
 	}
@@ -61,4 +66,11 @@ func GetSQLiteVersion() (version string, err error) {
 //this before calling Connect() to change the journal mode.
 func SQLitePragmaJournalMode(j journalMode) {
 	config.SQLitePragmaJournalMode = j
+}
+
+//GetSQLiteLibrary returns the sqlite library that was used to build the binary. The
+//library is set at build/run with -tags {mattn || modernc}. This returns the import
+//path of the library in use.
+func GetSQLiteLibrary() string {
+	return sqliteLibrary
 }
