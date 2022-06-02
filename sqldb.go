@@ -11,6 +11,9 @@ You can use this package in two manners: store the database configuration global
 package level variable, or store the configuration elsewhere in your app. Storing the
 configuration yourself allows for connecting to multiple databases at one time.
 
+
+Deploying a Database
+
 Deploying of a database schema is done via queries stored as strings and then provided
 in the DeployQueries field of your config. When you call the DeploySchema() function, a
 connection to the database (server or file) is established and then each query is run. You
@@ -21,6 +24,9 @@ run. These functions are used to handle more complex operations to deploy your d
 simple queries allow. Use TranslateCreateTableFuncs to automatically translate queries from
 one database format to another (i.e.: MySQL to SQLite) so that you do not need to maintain
 and list queries for each database type separately.
+
+
+Updating a Schema
 
 Updating a database schema happens in a similar manner to deploying, a list of queries is
 run against the database. These queries run encapsulated in a transaction so that either the
@@ -35,6 +41,25 @@ Extremely important: You should design your queries that deploy or update the sc
 safe to rerun multiple times. You don't want issues to occur if a user interacting with your
 app somehow tries to deploy the database over and over or update it after it has already been
 updated. For example, use "IF NOT EXISTS".
+
+
+SQLite Library
+
+This package support two SQLite libraries, mattn/sqlite3 and modernc/sqlite. The mattn
+library encapsulates the SQLite C source code and requires CGO for compilation which
+can be troublesome for cross-compiling. The modernc library is an automatic translation
+of the C source code to golang, however, it isn't the "source" SQLite C code and therefore
+doesn't have the same extent of testing.
+
+As of now, mattn is the default if no build tags are provided. This is simply due to the
+longer history of this library being available and the fact that this uses the SQLite
+C source code.
+
+Use either library with build tags:
+  go build -tags mattn ...
+  go build -tags modernc ...
+  go run -tags mattn ...
+  go run -tags modernc ...
 */
 package sqldb
 
@@ -48,10 +73,10 @@ import (
 	"strings"
 
 	"github.com/go-sql-driver/mysql" //mysql and mariadb, not an empty import b/c we use it to generate the connection string
-	_ "github.com/mattn/go-sqlite3"  //sqlite
-	"golang.org/x/exp/slices"
+	//sqlite is imported in other -sqlite- files due to build tags.
 
 	"github.com/jmoiron/sqlx"
+	"golang.org/x/exp/slices"
 )
 
 //Config is the details used for establishing and using a database connection.
@@ -366,7 +391,7 @@ func getDriver(t dbType) (driver string, err error) {
 	case DBTypeMySQL, DBTypeMariaDB:
 		driver = "mysql"
 	case DBTypeSQLite:
-		driver = "sqlite3"
+		driver = sqliteDriverName //see sqlite subfiles based on library used.
 	}
 
 	return
