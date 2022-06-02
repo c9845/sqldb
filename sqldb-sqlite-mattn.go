@@ -3,7 +3,7 @@
 
 //mattn required CGO. modernc does not which allows for easier cross compiled builds.
 
-//go:build modernc
+//go:build !modernc
 
 package sqldb
 
