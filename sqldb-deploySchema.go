@@ -11,23 +11,20 @@ import (
 )
 
 //DeploySchema deploys the database schema by running the list of DeployQueries defined
-//on a database config. This will create the database if needed. Typically this is
-//used to deploy an empty, or near empty, database.
+//on a database config. This will create the database if needed. Typically this is used
+//to deploy an empty, or near empty, database. A database connection must not already
+//be established; this func will establish the connection the leave it open for further
+//use.
 //
-//Typically this func would be called when your app is passed a flag, such as --deploy-db.
-//This is so that your database is only deployed when needed, not as part of the regular
-//startup of your app.
-//
-//You should call os.Exit() after this func completes, in most cases, so that you are not
-//tempted to call DeploySchema every time your app starts. Even upon successful deployment,
-//calling os.Exit() is useful so that if you are using a flag to call this func, the end-user
-//doesn't mistakenly put the flag in their script that starts this app.
+//Typically this func would be called when your app is passed a flag, such as --deploy-db,
+//so that your database is only deployed when needed, not as part of every start of
+//your app.
 //
 //The dontInsert parameter is used prevent any DeployQueries with "INSERT INTO" statements
 //from running. This is used to deploy a completely empty database.
 func (c *Config) DeploySchema(dontInsert bool) (err error) {
-	//Make sure the connection isn't already established to prevent overwriting it. This
-	//forces users to call Close() first to prevent any incorrect db usage.
+	//Make sure the connection isn't already established to prevent overwriting anything.
+	//This forces users to call Close() first to prevent any incorrect db usage.
 	if c.Connected() {
 		return ErrConnected
 	}
@@ -38,21 +35,20 @@ func (c *Config) DeploySchema(dontInsert bool) (err error) {
 		return
 	}
 
-	//Get the connection string used to connect to the database. The returned
-	//string will not included the db name (for non-sqlite dbs) since the db
-	//isn't deployed yet.
+	//Get the connection string used to connect to the database. The returned string
+	//will not included the db name (for non-sqlite dbs) since the db isn't deployed
+	//yet.
 	connString := c.buildConnectionString(true)
 
 	//Get the correct driver based on the database type.
-	//This is set based on the empty (_) imported package.
 	//Error should never occur this since we already validated the config in validate().
 	driver, err := getDriver(c.Type)
 	if err != nil {
 		return
 	}
 
-	//Connect to the database (really just the database server since the specific
-	//database itself is not created yet).
+	//Connect to the database (really just the database server, or file for sqlite,
+	//since the specific database itself is not created yet).
 	conn, err := sqlx.Open(driver, connString)
 	if err != nil {
 		return
@@ -77,28 +73,30 @@ func (c *Config) DeploySchema(dontInsert bool) (err error) {
 		}
 	}
 
-	//Disconnecting from database server since the connection doesn't include the
-	//specific database name. We will reconnect utilizing the database name now that
-	//it has been created. This really only needs to be done for non-SQLite dbs but
-	//it is just easier to do it for all db types.
-	err = conn.Close()
-	if err != nil {
-		return
-	}
+	//Reconnect to the database since the previously used connection didn't include
+	//the database name in the connection string. This will connect us to the specific
+	//database, not the database server. This connects using Connect(), the same func
+	//that would be used to connect to the db for normal usage.
+	//
+	//This is not necessary for SQLite since SQLite always connects to the filepath
+	//that was provided, not a server.
+	if !c.IsSQLite() {
+		err = conn.Close()
+		if err != nil {
+			return
+		}
 
-	//Connect to the database again, this time using the database name. This is the
-	//same connection method as used if we aren't deploying. This isn't needed for
-	//sqlite but we just do it for all db types since it is cleaner code-wise.
-	err = c.Connect()
-	if err != nil {
-		return
+		//Note, no `defer Close()` since we want to leave the connection to the db
+		//open upon successfully deploying the db so that db can be used without
+		//calling `Connect()` after this func.
+		err = c.Connect()
+		if err != nil {
+			return
+		}
 	}
-	defer c.Close()
 
 	//Run each deploy query.
-	if c.Debug {
-		log.Println("sqldb.DeploySchema (DeployQueries)...")
-	}
+	c.log("sqldb.DeploySchema (DeployQueries)...")
 	for _, q := range c.DeployQueries {
 		//Translate the query if needed. This will only translate queries with
 		//CREATE TABLE in the text.
@@ -158,9 +156,9 @@ func (c *Config) DeploySchema(dontInsert bool) (err error) {
 		log.Println("sqldb.DeploySchema (DeployFuncs)...done")
 	}
 
-	//Close the connection. We don't want to leave this connection open for further
-	//use just so that parent funcs can always assume the connection is closed.
-	err = c.Close()
+	//Not closing the connection upon success since user may want to start interacting
+	//with the db right away and this removes the need to call Connect() right after
+	//this func.
 
 	return
 }

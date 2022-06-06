@@ -594,3 +594,11 @@ func SetUpdateQueries(qs []string) {
 func SetUpdateIgnoreErrorFuncs(fs []UpdateIgnoreErrorFunc) {
 	config.UpdateIgnoreErrorFuncs = fs
 }
+
+//debugLog is a helper function to clean up logging out debugging information. This
+//removes the need for if c.Debug {} checks whenever we want to log out something.
+func (c *Config) debugLog(s string) {
+	if c.Debug {
+		log.Println(s)
+	}
+}
