@@ -1,7 +1,6 @@
 package sqldb
 
 import (
-	"os"
 	"strconv"
 	"strings"
 	"testing"
@@ -566,27 +565,60 @@ func TestDeploySchema(t *testing.T) {
 	`
 	c.DeployQueries = []string{createTable}
 
-	err := c.DeploySchema(false)
+	err := c.DeploySchemaWithOps(DeploySchemaOptions{false, false})
 	if err != nil {
 		t.Fatal(err)
 		return
 	}
+
+	//Try inserting
+	insert := `INSERT INTO users (Username) VALUES (?)`
+	_, err = c.connection.Exec(insert, "username@example.com")
+	if err != nil {
+		t.Fatal(err)
+		return
+	}
+
+	//Close connection
+	c.Close()
+}
+
+func TestDeploySchemaAndClose(t *testing.T) {
+	//Test with sqlite in-memory db.
+	//No test with mariadb/mysql b/c we probably don't have a db server accessible.
+	c := NewSQLiteConfig(InMemoryFilePathRacy)
+	if c == nil {
+		t.Fatal("No config returned")
+		return
+	}
+
+	createTable := `
+		CREATE TABLE IF NOT EXISTS users (
+			ID INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+			Username TEXT NOT NULL
+		)
+	`
+	c.DeployQueries = []string{createTable}
+
+	err := c.DeploySchemaWithOps(DeploySchemaOptions{false, true})
+	if err != nil {
+		t.Fatal(err)
+		return
+	}
+
+	//Make sure connection is closed.
+	if c.Connected() {
+		t.Fatal("Connection should be closed")
+	}
+
+	//Close connection
+	c.Close()
 }
 
 func TestUpdateSchema(t *testing.T) {
-	//Create temp file. We cannot just use an in memory db since we close and reopen
-	//the db connection between deploying and updating and this will cause the in
-	//memory db to not exist at the update stage.
-	f, err := os.CreateTemp("", "licensekeys-testUpdateSchema.db")
-	if err != nil {
-		t.Fatal(err)
-		return
-	}
-	defer os.Remove(f.Name())
-
 	//Test with sqlite in-memory db.
 	//No test with mariadb/mysql b/c we probably don't have a db server accessible.
-	c := NewSQLiteConfig(f.Name())
+	c := NewSQLiteConfig(InMemoryFilePathRacy)
 	if c == nil {
 		t.Fatal("No config returned")
 		return
@@ -601,16 +633,55 @@ func TestUpdateSchema(t *testing.T) {
 	`
 	c.DeployQueries = []string{createTable}
 
-	err = c.DeploySchema(false)
+	err := c.DeploySchemaWithOps(DeploySchemaOptions{false, false})
 	if err != nil {
 		t.Fatal(err)
 		return
 	}
 
-	//Make sure database connection is closed, even though DeploySchema calls Close().
-	connected := c.Connected()
-	if connected {
-		t.Fatal("db should be disconnected after DeploySchema() completes")
+	//Update
+	updateTable := `ALTER TABLE users ADD COLUMN FirstName TEXT`
+	c.UpdateQueries = []string{updateTable}
+
+	err = c.UpdateSchemaWithOps(UpdateSchemaOptions{false})
+	if err != nil {
+		t.Fatal(err)
+		return
+	}
+
+	//Insert into new column to make sure it was created.
+	insert := `INSERT INTO users (Username, FirstName) VALUES (?, ?)`
+	_, err = c.connection.Exec(insert, "username@example.com", "john")
+	if err != nil {
+		t.Fatal(err)
+		return
+	}
+
+	//Close connection
+	c.Close()
+}
+
+func TestUpdateSchemaAndClose(t *testing.T) {
+	//Test with sqlite in-memory db.
+	//No test with mariadb/mysql b/c we probably don't have a db server accessible.
+	c := NewSQLiteConfig(InMemoryFilePathRacy)
+	if c == nil {
+		t.Fatal("No config returned")
+		return
+	}
+
+	//Need to deploy schema first.
+	createTable := `
+		CREATE TABLE IF NOT EXISTS users (
+			ID INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+			Username TEXT NOT NULL
+		)
+	`
+	c.DeployQueries = []string{createTable}
+
+	err := c.DeploySchemaWithOps(DeploySchemaOptions{false, false})
+	if err != nil {
+		t.Fatal(err)
 		return
 	}
 
@@ -622,5 +693,10 @@ func TestUpdateSchema(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 		return
+	}
+
+	//Make sure connection is closed.
+	if c.Connected() {
+		t.Fatal("Connection should be closed")
 	}
 }

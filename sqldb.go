@@ -124,7 +124,7 @@ type Config struct {
 	//typically create tables or indexes or insert initial data into the database. The queries
 	//listed here will be executed in order when DeploySchema() is called. The list of queries
 	//provided must be in the correct order to create any tables referred to by a foreign key
-	//first!
+	//first! These queries should be indempotent!
 	DeployQueries []string
 
 	//DeployFuncs is a list of functions used to deploy the database. Use this for more
@@ -132,7 +132,7 @@ type Config struct {
 	//gets executed after the DeployQueries list. You will need to establish and close the
 	//db connection in each funtion. This is typically used when you want to reuse other funcs
 	//you have defined to handle inserting initial users or creating of default values. This
-	//should rarely be used!
+	//should rarely be used! These queries should be indempotent!
 	DeployFuncs []func() error
 
 	//TranslateCreateTableFuncs is a list of functions run against each DeployQueries that
@@ -147,7 +147,7 @@ type Config struct {
 	//typically add new columns, alter a column's type, or alter values stored in a column.
 	//The queries listed here will be executed in order when UpdateSchema() is called. The
 	//queries should be safe to be rerun multiple times (i.e.: if UpdateSchema() is called
-	//automatically each time your app starts).
+	//automatically each time your app starts). These queries should be indempotent!
 	UpdateQueries []string
 
 	//UpdateIgnoreErrorFuncs is a list of functions run when an UpdateQuery results in an
@@ -403,12 +403,12 @@ func getDriver(t dbType) (driver string, err error) {
 	return
 }
 
-//Connect connects to the database. This sets the database driver in the config, establishes
-//the database connection, and saves the connection pool for use in making queries. For SQLite
-//this also runs any PRAGMA commands.
+//Connect connects to the database. This sets the database driver in the config,
+//establishes the database connection, and saves the connection pool for use in making
+//queries. For SQLite this also runs any PRAGMA commands.
 func (c *Config) Connect() (err error) {
-	//Make sure the connection isn't already established to prevent overwriting it. This
-	//forces users to call Close() first to prevent any incorrect db usage.
+	//Make sure the connection isn't already established to prevent overwriting it.
+	//This forces users to call Close() first to prevent any incorrect db usage.
 	if c.Connected() {
 		return ErrConnected
 	}
@@ -419,7 +419,7 @@ func (c *Config) Connect() (err error) {
 		return
 	}
 
-	//Get the connection string inclusive of the db name.
+	//Get the connection string used to connect to the database.
 	connString := c.buildConnectionString(false)
 
 	//Get the correct driver based on the database type.
@@ -431,37 +431,39 @@ func (c *Config) Connect() (err error) {
 	}
 
 	//Connect to the database.
-	//For SQLite, check if the database file exists. This func will not create the database
-	//file. The database file needs to be created first with Deploy().
-	if c.Type == DBTypeSQLite {
+	//For SQLite, check if the database file exists. This func will not create the
+	//database file. The database file needs to be created first with Deploy(). If
+	//the database is in-memory, we can ignore this error
+	if c.IsSQLite() && c.SQLitePath != InMemoryFilePathRacy && c.SQLitePath != InMemoryFilePathRaceSafe {
 		_, err = os.Stat(c.SQLitePath)
-		if os.IsNotExist(err) && c.SQLitePath != InMemoryFilePathRacy && c.SQLitePath != InMemoryFilePathRaceSafe {
+		if os.IsNotExist(err) {
 			return err
 		}
 	}
 
 	//This doesn't really establish a connection to the database, it just "builds" the
 	//connection. The connection is established with Ping() below.
-	//Note no defer conn.Close() since we want to keep the db connection alive for future
-	//use in running queries.
+	//
+	//Note no `defer conn.Close()` since we want to keep the db connection alive for
+	//future use in running queries. It is the job of whatever func called Connect to
+	//call Close.
 	conn, err := sqlx.Open(driver, connString)
 	if err != nil {
 		return
 	}
 
-	//Test the connection to the database to make sure it works. This opens the connection
-	//for future use.
+	//Test the connection to the database to make sure it works. This opens the
+	//connection for future use.
 	err = conn.Ping()
 	if err != nil {
 		return
 	}
 
-	//Run any PRAGMA queries for SQLite as needed
-	//We already validated the value stored in SQLitePragma... so we can just pass it as a
-	//value to the query.
+	//Run any PRAGMA queries for SQLite as needed. We already validated the value
+	//Pragma options in validate() so we can just pass it as a value to the query.
 	//Could not use bindvar parameter here for some reason.
 	//Cannot use prepare, then exec, as this causes a "cannot commit transaction - SQL statements in process" error.
-	if c.Type == DBTypeSQLite {
+	if c.IsSQLite() {
 		q := "PRAGMA journal_mode = " + string(c.SQLitePragmaJournalMode)
 		_, innerErr := conn.Exec(q)
 		if innerErr != nil {
@@ -475,17 +477,15 @@ func (c *Config) Connect() (err error) {
 		conn.MapperFunc(c.MapperFunc)
 	}
 
-	//Save the connection for running queries.
+	//Save the connection for running future queries.
 	c.connection = conn
 
-	//diagnostic logging
-	if c.Debug {
-		switch c.Type {
-		case DBTypeMySQL, DBTypeMariaDB:
-			log.Println("sqldb.Connect", "Connecting to database "+c.Name+" on "+c.Host+" with user "+c.User)
-		case DBTypeSQLite:
-			log.Println("sqldb.Connect", "Connecting to database "+c.SQLitePath+" (Journal Mode: "+string(c.SQLitePragmaJournalMode)+")")
-		}
+	//Diagnostic logging.
+	switch c.Type {
+	case DBTypeMySQL, DBTypeMariaDB:
+		c.debugPrintln("sqldb.Connect", "Connecting to database "+c.Name+" on "+c.Host+" with user "+c.User)
+	case DBTypeSQLite:
+		c.debugPrintln("sqldb.Connect", "Connecting to database "+c.SQLitePath+" (Journal Mode: "+string(c.SQLitePragmaJournalMode)+")")
 	}
 
 	return
@@ -595,9 +595,10 @@ func SetUpdateIgnoreErrorFuncs(fs []UpdateIgnoreErrorFunc) {
 	config.UpdateIgnoreErrorFuncs = fs
 }
 
-//debugLog is a helper function to clean up logging out debugging information. This
-//removes the need for if c.Debug {} checks whenever we want to log out something.
-func (c *Config) debugLog(s string) {
+//println performs log.Println if Debug is true for the config. This is just a helper
+//func to remove the need for checking if Debug == true every time we want to log out
+//debugging information.
+func (c *Config) debugPrintln(s ...string) {
 	if c.Debug {
 		log.Println(s)
 	}

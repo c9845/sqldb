@@ -1,3 +1,17 @@
+v1.3.0
+----------
+- Clean up logging.
+    - Previously logging was done with `if c.Debug{}` blocks encapsulating a `.log.Println()` call.
+    - Now, c.debugPrintln can be used.
+    - This removes a lot of `if` blocks to make code cleaner.
+- Allow keeping a database connection open after deploying or updating schema.
+    - This was necessary for supporting SQLite when using an in-memory database.  
+    - When an deploying a db the connection was closed after deploy was completed.
+    - However, for an in-memory db this doesn't work since each connection gets a "new" db. 
+    - When the connection was reopened to run queries none of the deployed schema existed.
+    - To alleviate this, deploying (or updating) a db now can take an options struct that allows for keeping the connection open after deploy/update.
+    - This allows connection to be reused and in-memory db to function as expected.
+
 v1.2.0
 ----------
 - Allow choosing between mattn and modernc libraries for SQLite.

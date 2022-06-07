@@ -6,21 +6,38 @@ import (
 	"strings"
 )
 
-//UpdateSchema updates an already database by running the list of UpdateQueries defined
-//on a database config. Typically this is used to add new columns, alter columns, add
-//new indexes, or change values stored in the database.
+//UpdateSchemaOptions provides options when updating a schema.
+type UpdateSchemaOptions struct {
+	CloseConnection bool
+}
+
+//UpdateSchemaWithOps updates a database by running the list of UpdateQueries defined
+//in config. This is typically used to add new colums, alter columns, add indexes, or
+//updates values stored in the database.
+//
+//Although each UpdateQuery should be indempotent, you should still not call this func
+//each time your app starts or otherwise. Typically you would check if the database
+//has already been updated or use a flag, such as  --update-db, to run this func.
 //
 //When each UpdateQuery is run, if an error occurs the error is passed into each defined
-//UpdateIgnoreErrorFuncs to determine if and how the error needs to be handled. Sometimes
-//an error during a schema update isn't actually an error we need to handle, such as adding
-//a column that already exists. Most times these types of errors occur because the
-//UpdateSchema func is rerun. The list of funcs you add to UpdateIgnoreErrorFuncs will check
-//the returned error message and query and determine if the error can be ignored.
-func (c *Config) UpdateSchema() (err error) {
-	//Make sure the connection isn't already established to prevent overwriting it. This
-	//forces users to call Close() first to prevent any incorrect db usage.
-	if c.Connected() {
-		return ErrConnected
+//UpdateIgnoreErrorFuncs to determine if and how the error needs to be handled.
+//Sometimes an error during a schema update isn't actually an error we need to handle,
+//such as adding a column that already exists. Most times these types of errors occur
+//because the UpdateSchema func is being rerun. The list of funcs you add to0
+//UpdateIgnoreErrorFuncs will check the returned error message and query and determine
+//if the error can be ignored.
+func (c *Config) UpdateSchemaWithOps(ops UpdateSchemaOptions) (err error) {
+	//Check if a connection to the database is already established, and if so, use it.
+	if !c.Connected() {
+		err = c.Connect()
+		if err != nil {
+			return
+		}
+	}
+
+	//Check if the connection should be closed after this func completes.
+	if ops.CloseConnection {
+		defer c.Close()
 	}
 
 	//Make sure the config is valid.
@@ -29,68 +46,74 @@ func (c *Config) UpdateSchema() (err error) {
 		return
 	}
 
-	//Connect to the database.
-	err = c.Connect()
-	if err != nil {
-		return
-	}
-	defer c.Close()
-
-	//Get a transaction. We want to update the entire db, or none of it to
-	//reduce the chances of odd issues.
-	connection := c.Connection()
+	//Start a transaction. We use a transaction to update the schema so that either
+	//the entire database is updated successfully or none of the database is updated.
+	//This prevents the database from being in a half-updated state.
 	ctx := context.Background()
+	connection := c.Connection()
 	tx, err := connection.BeginTxx(ctx, nil)
 	if err != nil {
+		c.Close()
 		return
 	}
 	defer tx.Rollback()
 
 	//Run each update query.
-	if c.Debug {
-		log.Println("sqldb.UpdateSchema...")
-	}
-
+	c.debugPrintln("sqldb.UpdateSchema...")
 	for _, q := range c.UpdateQueries {
-		const trimLength = 80 //arbitrary number, longer is better
+		//Log out some info about the query being run for diagnostics.
+		const trimLength = 80 //arbitrary number, longer shows more info but can clog up terminal output.
 		if len(q) > trimLength {
-			log.Println(strings.TrimSpace(q[:trimLength]) + "...")
+			c.debugPrintln(strings.TrimSpace(q[:trimLength]) + "...")
 		} else {
-			log.Print(q)
+			c.debugPrintln(q)
 		}
 
+		//Execute the query. Always log on error so users can identify query that has
+		//an error.
 		_, innerErr := tx.ExecContext(ctx, q)
-		if innerErr != nil {
-			ignore := c.ignoreUpdateSchemaErrors(q, innerErr)
-			if !ignore {
-				if c.Debug {
-					log.Println("sqldb.UpdateSchema() error with query", q, innerErr)
-				}
-
-				return innerErr
-			}
-
+		if innerErr != nil && !c.ignoreUpdateSchemaErrors(q, innerErr) {
+			log.Println("sqldb.UpdateSchema() error with query", q, innerErr)
+			c.Close()
+			return innerErr
 		}
-	} //end for: loop through update queries
-
-	if c.Debug {
-		log.Println("sqldb.UpdateSchema...done")
 	}
+	c.debugPrintln("sqldb.UpdateSchema...done")
 
-	//Commit now that db has been completely and successfully updated.
+	//Commit transaction now that all UpdateQueries have been run successfully..
 	err = tx.Commit()
 	if err != nil {
+		c.Close()
 		return
 	}
 
-	//Close the connection. We don't want to leave this connection open for further
-	//use just so that parent funcs can always assume the connection is closed.
-	err = c.Close()
+	if ops.CloseConnection {
+		//close is handeld by defer above.
+		c.debugPrintln("Connection closed upon successful deploy.")
+	} else {
+		c.debugPrintln("Connection left open after successful deploy.")
+	}
 
 	return
 }
 
-//UpdateSchema updates the database for the default package level config.
+//UpdateSchemaWithOps updates the database for the default package level config.
+func UpdateSchemaWithOps(ops UpdateSchemaOptions) (err error) {
+	return config.UpdateSchemaWithOps(ops)
+}
+
+//UpdateSchema runs UpdateSchemaWithOps with some defaults set. This was implemented
+//to support legacy compatibility while expanding the feature set with update options.
+func (c *Config) UpdateSchema() (err error) {
+	ops := UpdateSchemaOptions{
+		CloseConnection: true,
+	}
+	return c.UpdateSchemaWithOps(ops)
+}
+
+//UpdateSchema runs UpdateSchemaWithOps with some defaults set for the default package
+//level config. This was implemented to to support legacy compatibility while expanding
+//the feature set with update options.
 func UpdateSchema() (err error) {
 	return config.UpdateSchema()
 }
@@ -139,10 +162,7 @@ func UFAddDuplicateColumn(c Config, query string, err error) bool {
 	dup := strings.Contains(strings.ToLower(err.Error()), "duplicate column")
 
 	if addCol && dup {
-		if c.Debug {
-			log.Println("  Ignoring query, " + err.Error())
-		}
-
+		c.debugPrintln("  Ignoring query, " + err.Error())
 		return true
 	}
 
@@ -162,10 +182,7 @@ func UFDropUnknownColumn(c Config, query string, err error) bool {
 	unknownS := strings.Contains(strings.ToLower(err.Error()), "no such column")
 
 	if dropCol && (unknownM || unknownS) {
-		if c.Debug {
-			log.Println("  Ignoring query, " + err.Error())
-		}
-
+		c.debugPrintln("  Ignoring query, " + err.Error())
 		return true
 	}
 
@@ -183,10 +200,7 @@ func UFDropUnknownColumn(c Config, query string, err error) bool {
 func UFModifySQLiteColumn(c Config, query string, err error) bool {
 	//ignore queries that modify a column for sqlite dbs
 	if strings.Contains(strings.ToUpper(query), "MODIFY COLUMN") && c.Type == DBTypeSQLite {
-		if c.Debug {
-			log.Println("  Ignoring query, " + err.Error())
-		}
-
+		c.debugPrintln("  Ignoring query, " + err.Error())
 		return true
 	}
 
@@ -199,10 +213,7 @@ func UFModifySQLiteColumn(c Config, query string, err error) bool {
 //an error if the item already exists.
 func UFAlreadyExists(c Config, query string, err error) bool {
 	if strings.Contains(err.Error(), "already exists") {
-		if c.Debug {
-			log.Println("  Ignoring query, " + err.Error())
-		}
-
+		c.debugPrintln("  Ignoring query, " + err.Error())
 		return true
 	}
 
