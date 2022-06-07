@@ -598,8 +598,8 @@ func SetUpdateIgnoreErrorFuncs(fs []UpdateIgnoreErrorFunc) {
 //println performs log.Println if Debug is true for the config. This is just a helper
 //func to remove the need for checking if Debug == true every time we want to log out
 //debugging information.
-func (c *Config) debugPrintln(s ...string) {
+func (c *Config) debugPrintln(v ...any) {
 	if c.Debug {
-		log.Println(s)
+		log.Println(v...)
 	}
 }
