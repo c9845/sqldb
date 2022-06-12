@@ -60,6 +60,15 @@ Use either library with build tags:
   go build -tags modernc ...
   go run -tags mattn ...
   go run -tags modernc ...
+
+The mattn/sqlite3 library sets some default PRAGMA values, as noted in the source code
+at https://github.com/mattn/go-sqlite3/blob/ae2a61f847e10e6dd771ecd4e1c55e0421cdc7f9/sqlite3.go#L1086.
+Some of these are just safe defaults, for example, busy_timeout. In order to treat the
+mattn/sqlite3 and modernc/sqlite more similarly, some of these mattn/sqlite3 default
+PRAGMAs are set when using the modernc/sqlite library. This is simply done to make
+using either SQLite library interchangable and since the mattn/sqlite3 library is older
+and more common, we use it's values as the more "correct".
+
 */
 package sqldb
 
@@ -104,11 +113,17 @@ type Config struct {
 	//SQLite databases.
 	SQLitePath string
 
-	//SQLitePragmaJournalMode sets the SQLite database journalling mode. This is used to switch
-	//between the default rollback journal ("DELETE") and the write ahead log ("WAL"). WAL is
-	//useful for when you have long-running reads on the database that are blocking access for
-	//writes.
-	SQLitePragmaJournalMode journalMode
+	//SQLitePragmas is a list of PRAGMA queries to run after connecting to a SQLite
+	//database. Typically this is used to set the journalling mode (default DELETE or
+	//WAL is common).
+	//
+	//If using the mattn/sqlite3 library, you can also set pragmas via the filename to
+	//connect to (see https://github.com/mattn/go-sqlite3#connection-string). Any
+	//pragmas provided here will override the values in the filename; these pragmas
+	//will run *after* connecting to the database.
+	//
+	//Ex.: PRAGMA journal_mode=WAL
+	SQLitePragmas []string
 
 	//MapperFunc is used to override the mapping of database column names to struct field names
 	//or struct tags. Mapping of column names is used during queries where StructScan(), Get(),
@@ -198,28 +213,10 @@ func (t dbType) valid() error {
 	return fmt.Errorf("invalid db type, should be one of '%s', got '%s'", validDBTypes, t)
 }
 
-//Supported SQLite journal modes.
-type journalMode string
-
-const (
-	SQLiteJournalModeRollback = journalMode("DELETE")
-	SQLiteJournalModeWAL      = journalMode("WAL")
-)
-
-//JournalMode returns a journalMode. This is provided so that other journal modes
-//besides the const defined Rollback/DELETE and WAL can be used (ex.: TRUNCATE).
-//Providing this tooling allows for a more "I meant that" appearance in code when
-//using a non-const defined journal mode. This is also why a "Valid()" func is not
-//defined for journalMode since other modes can be provided.
-func JournalMode(s string) journalMode {
-	return journalMode(s)
-}
-
 //defaults
 const (
-	defaultMySQLPort         = 3306
-	defaultMariaDBPort       = 3306
-	defaultSQLiteJournalMode = SQLiteJournalModeRollback
+	defaultMySQLPort   = 3306
+	defaultMariaDBPort = 3306
 )
 
 //errors
@@ -315,20 +312,15 @@ func (c *Config) validate() (err error) {
 		return
 	}
 
-	//check config based on db type since each type of db has different requirements
+	//Check config based on db type since each type of db has different requirements.
 	switch c.Type {
 	case DBTypeSQLite:
 		if c.SQLitePath == "" {
 			return ErrSQLitePathNotProvided
 		}
-		if c.SQLitePragmaJournalMode == "" {
-			c.SQLitePragmaJournalMode = defaultSQLiteJournalMode
-		}
 
-		//We don't check if journal mode is valid since non-const defined journal
-		//modes can also be provided. This allows for using other SQLite journal
-		//modes that aren't defined in this package. An error will most likely be
-		//kicked out by SQLite when setting the journal mode if it is invalid.
+		//We don't check PRAGMAs since they are just strings. When we run each on the
+		//db, we will return any errors.
 
 	case DBTypeMySQL, DBTypeMariaDB:
 		if c.Host == "" {
@@ -459,17 +451,25 @@ func (c *Config) Connect() (err error) {
 		return
 	}
 
-	//Run any PRAGMA queries for SQLite as needed. We already validated the value
-	//Pragma options in validate() so we can just pass it as a value to the query.
-	//Could not use bindvar parameter here for some reason.
-	//Cannot use prepare, then exec, as this causes a "cannot commit transaction - SQL statements in process" error.
+	//Run any PRAGMA queries for SQLite as needed. Cannot use prepare, then exec, as
+	//this causes a "cannot commit transaction - SQL statements in process" error.
 	if c.IsSQLite() {
-		q := "PRAGMA journal_mode = " + string(c.SQLitePragmaJournalMode)
-		_, innerErr := conn.Exec(q)
-		if innerErr != nil {
-			innerErr = fmt.Errorf("could not set journal_mode, %w", innerErr)
-			return innerErr
+		for _, p := range c.SQLitePragmas {
+			c.debugPrintln("Setting PRAGMA " + p)
+			_, innerErr := conn.Exec(p)
+			if innerErr != nil {
+				return fmt.Errorf("error with PRAGMA %s, %w", p, innerErr)
+			}
 		}
+	}
+
+	//Make sure SQLite is set to only one max connection when using DELETE mode. This
+	//makes sure two writers don't attempt to write to the database at the same time
+	//which is something SQLite doesn't support. This was added to fix bug noticed
+	//with modernc/sqlite library whereas the error (SQLITE_BUSY) doesn't occur with
+	//mattn/sqlite3.
+	if c.IsSQLite() {
+		conn.SetMaxOpenConns(1)
 	}
 
 	//Set the mapper for mapping column names to struct fields.
@@ -485,7 +485,14 @@ func (c *Config) Connect() (err error) {
 	case DBTypeMySQL, DBTypeMariaDB:
 		c.debugPrintln("sqldb.Connect", "Connecting to database "+c.Name+" on "+c.Host+" with user "+c.User)
 	case DBTypeSQLite:
-		c.debugPrintln("sqldb.Connect", "Connecting to database "+c.SQLitePath+" (Journal Mode: "+string(c.SQLitePragmaJournalMode)+")")
+		journalMode, err := c.GetSQLiteJournalMode()
+		if err != nil {
+			c.debugPrintln("sqldb.Connect", "Could not look up journal mode for debug logging, skipping.", err)
+		}
+
+		maxOpenConns := conn.Stats().MaxOpenConnections
+
+		c.debugPrintln("sqldb.Connect", "Connecting to database "+c.SQLitePath+" (Journal Mode: "+journalMode+", Max. Open Conns.:"+strconv.Itoa(maxOpenConns)+")")
 	}
 
 	return

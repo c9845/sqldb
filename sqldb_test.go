@@ -438,6 +438,27 @@ func TestConnect(t *testing.T) {
 		return
 	}
 	defer c.Close()
+
+	//Test setting some pragmas
+	c.Close()
+	c.SQLitePragmas = []string{
+		"PRAGMA busy_timeout = 5959",
+	}
+	err = c.Connect()
+	if err != nil {
+		t.Fatal(err)
+		return
+	}
+	defer c.Close()
+
+	bt, err := c.GetSQLiteBusyTimeout()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bt != 5959 {
+		t.Fatal("busy timeout not set correctly", bt)
+		return
+	}
 }
 
 func TestClose(t *testing.T) {

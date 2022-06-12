@@ -1,6 +1,8 @@
 package sqldb
 
-import "github.com/jmoiron/sqlx"
+import (
+	"github.com/jmoiron/sqlx"
+)
 
 const (
 	//InMemoryFilePathRacy is the "path" to provide for the SQLite file when you want
@@ -22,7 +24,7 @@ func NewSQLiteConfig(pathToFile string) (c *Config) {
 	c, _ = NewConfig(DBTypeSQLite)
 
 	c.SQLitePath = pathToFile
-	c.SQLitePragmaJournalMode = defaultSQLiteJournalMode
+	c.SQLitePragmas = sqliteDefaultPragmas
 	c.TranslateCreateTableFuncs = []TranslateFunc{
 		TFMySQLToSQLiteReformatID,
 		TFMySQLToSQLiteRemovePrimaryKeyDefinition,
@@ -52,9 +54,8 @@ func IsSQLite() bool {
 	return config.IsSQLite()
 }
 
-//GetSQLiteVersion returns the version of SQLite that is embedded into the app. This is
-//used for diagnostics. This works by creating a temporary in-memory SQLite database to
-//run query against.
+//GetSQLiteVersion returns the version of SQLite that is embedded into the app. This
+//works by creating a temporary in-memory SQLite database to run a query against.
 func GetSQLiteVersion() (version string, err error) {
 	driver, err := getDriver(DBTypeSQLite)
 	if err != nil {
@@ -77,15 +78,21 @@ func GetSQLiteVersion() (version string, err error) {
 	return
 }
 
-//SQLitePragmaJournalMode set the journal mode for the package level config. Use
-//this before calling Connect() to change the journal mode.
-func SQLitePragmaJournalMode(j journalMode) {
-	config.SQLitePragmaJournalMode = j
-}
-
 //GetSQLiteLibrary returns the sqlite library that was used to build the binary. The
 //library is set at build/run with -tags {mattn || modernc}. This returns the import
 //path of the library in use.
 func GetSQLiteLibrary() string {
 	return sqliteLibrary
+}
+
+//GetSQLiteJournalMode returns the SQLite journalling mode used for the connected db.
+func (c *Config) GetSQLiteJournalMode() (journalMode string, err error) {
+	err = c.connection.Get(&journalMode, "PRAGMA journal_mode")
+	return
+}
+
+//GetSQLiteBusyTimeout returns the SQLite busy timeout used for the connected db.
+func (c *Config) GetSQLiteBusyTimeout() (busyTimeout int, err error) {
+	err = c.connection.Get(&busyTimeout, "PRAGMA busy_timeout")
+	return
 }
