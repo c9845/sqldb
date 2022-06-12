@@ -455,7 +455,7 @@ func (c *Config) Connect() (err error) {
 	//this causes a "cannot commit transaction - SQL statements in process" error.
 	if c.IsSQLite() {
 		for _, p := range c.SQLitePragmas {
-			c.debugPrintln("Setting PRAGMA " + p)
+			c.debugPrintln("sqldb.Connect", "Setting SQLite PRAGMA: "+p)
 			_, innerErr := conn.Exec(p)
 			if innerErr != nil {
 				return fmt.Errorf("error with PRAGMA %s, %w", p, innerErr)
@@ -492,7 +492,7 @@ func (c *Config) Connect() (err error) {
 
 		maxOpenConns := conn.Stats().MaxOpenConnections
 
-		c.debugPrintln("sqldb.Connect", "Connecting to database "+c.SQLitePath+" (Journal Mode: "+journalMode+", Max. Open Conns.:"+strconv.Itoa(maxOpenConns)+")")
+		c.debugPrintln("sqldb.Connect", "Connecting to database "+c.SQLitePath+" (Journal Mode: "+journalMode+", Max Open Connections.: "+strconv.Itoa(maxOpenConns)+")")
 	}
 
 	return
