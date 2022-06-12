@@ -91,8 +91,18 @@ func (c *Config) GetSQLiteJournalMode() (journalMode string, err error) {
 	return
 }
 
+//GetSQLiteJournalMode returns the SQLite journalling mode used for the connected db.
+func GetSQLiteJournalMode() (journalMode string, err error) {
+	return config.GetSQLiteJournalMode()
+}
+
 //GetSQLiteBusyTimeout returns the SQLite busy timeout used for the connected db.
 func (c *Config) GetSQLiteBusyTimeout() (busyTimeout int, err error) {
 	err = c.connection.Get(&busyTimeout, "PRAGMA busy_timeout")
 	return
+}
+
+//GetSQLiteBusyTimeout returns the SQLite busy timeout used for the connected db.
+func GetSQLiteBusyTimeout() (busyTimeout int, err error) {
+	return config.GetSQLiteBusyTimeout()
 }
