@@ -1,3 +1,8 @@
+v1.4.0
+----------
+- Allow setting any SQLite PRAGMAs after connecting to db.
+- Set MaxOpenConnections to 1 for SQLite dbs to alleviate SQLITE_BUSY errors (related to modernc library only really).
+
 v1.3.0
 ----------
 - Clean up logging.
