@@ -468,9 +468,12 @@ func (c *Config) Connect() (err error) {
 	//which is something SQLite doesn't support. This was added to fix bug noticed
 	//with modernc/sqlite library whereas the error (SQLITE_BUSY) doesn't occur with
 	//mattn/sqlite3.
-	if c.IsSQLite() {
-		conn.SetMaxOpenConns(1)
-	}
+	//
+	//TODO: this needs further investigation.
+	//
+	// if c.IsSQLite() {
+	// 	conn.SetMaxOpenConns(1)
+	// }
 
 	//Set the mapper for mapping column names to struct fields.
 	if c.MapperFunc != nil {
