@@ -1,5 +1,8 @@
 package sqldb
 
+//defaults
+const defaultMariaDBPort = 3306
+
 //NewMariaDBConfig returns a config for connecting to a MySQL database.
 func NewMariaDBConfig(host string, port uint, name, user, password string) (c *Config) {
 	c = NewMySQLConfig(host, port, name, user, password)

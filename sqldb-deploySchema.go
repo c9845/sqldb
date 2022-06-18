@@ -10,6 +10,9 @@ import (
 	"github.com/jmoiron/sqlx"
 )
 
+//DeployFunc is the format for a function used to deploy part of the schema.
+type DeployFunc func(*sqlx.DB) error
+
 //DeploySchemaOptions provides options when deploying a schema.
 type DeploySchemaOptions struct {
 	SkipInsert      bool

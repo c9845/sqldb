@@ -15,7 +15,3 @@ const (
 	sqliteLibrary    = "github.com/mattn/go-sqlite3"
 	sqliteDriverName = "sqlite3"
 )
-
-//mattn/sqlite3 already sets some default PRAGMAS as noted in the following link.
-//https://github.com/mattn/go-sqlite3/blob/ae2a61f847e10e6dd771ecd4e1c55e0421cdc7f9/sqlite3.go#L1086
-var sqliteDefaultPragmas = []string{}

@@ -1,5 +1,8 @@
 package sqldb
 
+//defaults
+const defaultMySQLPort = 3306
+
 //NewMySQLConfig returns a config for connecting to a MySQL database.
 func NewMySQLConfig(host string, port uint, name, user, password string) (c *Config) {
 	//Returned error is ignored since it only returns if a bad db type is provided

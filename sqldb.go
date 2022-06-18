@@ -1,59 +1,68 @@
 /*
-Package sqldb handles a establishing and managing a database connection, deploying and
-updating a database schema, translating queries from one database format to another,
-and provides various other tooling for interacting with SQL databases.
+Package sqldb provides some tooling to make connecting to, deploying, updating, and
+using a SQL database easier. This provides some wrapping around the sql package. This
+package was written to reduce the amount of boilerplate code to connect, deploy, or
+update a database.
 
-This package uses "sqlx" instead of the go standard library "sql" package because "sqlx"
-provides some additional tooling which makes using the database a bit easier (i.e.: Get(),
-Select(), and StructScan() that can thus be in queries).
 
-You can use this package in two manners: store the database configuration globally in the
-package level variable, or store the configuration elsewhere in your app. Storing the
-configuration yourself allows for connecting to multiple databases at one time.
+Global or Local DB Connection
+
+You can use this package in two methods: as a singleton with the database configuration
+and connection stored in a package-level globally-accessible variable, or store the
+configuration and connection somewhere else in your application. Storing the data
+yourself allows for connecting to multiple databases at once.
 
 
 Deploying a Database
 
-Deploying of a database schema is done via queries stored as strings and then provided
-in the DeployQueries field of your config. When you call the DeploySchema() function, a
-connection to the database (server or file) is established and then each query is run. You
-should take care to provide the list of queries in DeployQueries in an order where foreign
-key tables are created first so you don't get unnecessary errors. DeployQueries can also be
-used to insert initial data into a database. After each DeployQuery is run, DeployFuncs are
-run. These functions are used to handle more complex operations to deploy your database then
-simple queries allow. Use TranslateCreateTableFuncs to automatically translate queries from
-one database format to another (i.e.: MySQL to SQLite) so that you do not need to maintain
-and list queries for each database type separately.
+Deploying of a schema is done via queries stored in your configuration's DeployQueries
+and DeployFuncs fields. These queries and funcs are run when DeploySchema() is called.
+DeploySchema() will create the database, if needed, before deploying tables, creating
+indexes, inserting initial data, etc. Each DeployQuery is run before the DeployFuncs.
+
+DeployQueries are typically used for creating tables or indexes. DeployFuncs are
+typically used for more complex operations such as inserting initial data only if no
+data already exists or handling a complicated schema change based on existing values.
+When writing DeployQueries or DeployFuncs you should ensure the result of each is
+indempotent; rerunning DeployQueries or DeployFuncs over and over should be successful
+without returning errors about "already exists" or creating or inserting duplicate
+records.
+
+An advanced tool of deployment is TranslateDeployCreateTableFuncs. Funcs listed here
+are used to translate a CREATE TABLE query from one database format to another (i.e.:
+MySQL to SQLite). This allows you to write your CREATE TABLE queries in one database
+format but allow running your application with a database deployed in multiple formats;
+it just makes writing CREATE TABLE queries a bit easier. This translation is necessary
+since different databases have different CREATE TABLE query formats or column types (
+for example, SQLite doesn't really have VARCHAR). Each DeployQuery is run through each
+TranslateDeployCreateTableFunc with translation of the query performed as needed.
 
 
 Updating a Schema
 
-Updating a database schema happens in a similar manner to deploying, a list of queries is
-run against the database. These queries run encapsulated in a transaction so that either the
-entire database is updated, or none of queries are applied. This is done to eliminate the
-possibility of a partially updated database schema. Each update query is run through a list
-of error analyzer functions, UpdateIgnoreErrorFuncs, to determine if an error can be ignored.
-This is typically used to ignore errors for when you are adding a column that already exists,
-removing a column that is already removed, etc. Take note that SQLite does not allow for columns
-to be modified!
+Updating a database schema happens in a similar manner to deploying, a list of queries
+in UpdateQueries and UpdateFuncs is run against the database. All queries are run
+encapsulated in a single transaction so that either the updated is successful, or none
+of updates are applied. This is done to eliminate the possibility of a partial update.
 
-Extremely important: You should design your queries that deploy or update the schema to be
-safe to rerun multiple times. You don't want issues to occur if a user interacting with your
-app somehow tries to deploy the database over and over or update it after it has already been
-updated. For example, use "IF NOT EXISTS".
+Each UpdateQuery is run through a list of error analyzer functions, UpdateIgnoreErrorFuncs,
+to determine if an error can be ignored. This is typically used to ignore errors for
+when you are adding a column that already exists, removing a column that is already
+removed, etc. These funcs just help ignore errors that aren't really errors.
 
 
 SQLite Library
 
-This package support two SQLite libraries, mattn/sqlite3 and modernc/sqlite. The mattn
+This package support two SQLite libraries, mattn/go-sqlite3 and modernc/sqlite. The mattn
 library encapsulates the SQLite C source code and requires CGO for compilation which
 can be troublesome for cross-compiling. The modernc library is an automatic translation
-of the C source code to golang, however, it isn't the "source" SQLite C code and therefore
-doesn't have the same extent of testing.
+of the C source code to golang, however, it isn't the "source" SQLite C code and
+therefore doesn't have the same level of trustworthiness or extent of testing, however,
+it can be cross-compiled much more easily.
 
-As of now, mattn is the default if no build tags are provided. This is simply due to the
-longer history of this library being available and the fact that this uses the SQLite
-C source code.
+As of now, mattn is the default if no build tags are provided. This is simply due to
+the longer history of this library being available and the fact that this uses the
+SQLite C source code.
 
 Use either library with build tags:
   go build -tags mattn ...
@@ -61,14 +70,25 @@ Use either library with build tags:
   go run -tags mattn ...
   go run -tags modernc ...
 
-The mattn/sqlite3 library sets some default PRAGMA values, as noted in the source code
+The mattn/go-sqlite3 library sets some default PRAGMA values, as noted in the source code
 at https://github.com/mattn/go-sqlite3/blob/ae2a61f847e10e6dd771ecd4e1c55e0421cdc7f9/sqlite3.go#L1086.
 Some of these are just safe defaults, for example, busy_timeout. In order to treat the
-mattn/sqlite3 and modernc/sqlite more similarly, some of these mattn/sqlite3 default
+mattn/go-sqlite3 and modernc/sqlite more similarly, some of these mattn/go-sqlite3 default
 PRAGMAs are set when using the modernc/sqlite library. This is simply done to make
-using either SQLite library interchangable and since the mattn/sqlite3 library is older
-and more common, we use it's values as the more "correct".
+using either SQLite library more comparibly interchangable.
 
+
+Notes
+
+This package uses "sqlx" instead of the go standard library "sql" package because "sqlx"
+provides some additional tooling which makes using the database a bit easier (i.e.: Get(),
+Select(), and StructScan() that can thus be in queries).
+
+You should design your queries (DeployQueries, DeployFuncs, UpdateQueries, UpdateFuncs)
+so that deploying or updating the schema is safe to rerun multiple times. You do not
+want issues to occur if a user interacting with yourapp somehow tries to deploy the
+database over and over or update it after it has already been updated. For example,
+use "IF NOT EXISTS" with creating tables or indexes.
 */
 package sqldb
 
@@ -81,8 +101,9 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/go-sql-driver/mysql" //mysql and mariadb, not an empty import b/c we use it to generate the connection string
-	//sqlite is imported in other -sqlite- files due to build tags.
+	//MySQL and MariaDB import is not an empty import b/c we use it to generate the connection string.
+	//SQlite is imported in other sqldb-sqlite-*.go files due to different libraries & build tags.
+	"github.com/go-sql-driver/mysql"
 
 	"github.com/jmoiron/sqlx"
 	"golang.org/x/exp/slices"
@@ -93,91 +114,96 @@ type Config struct {
 	//Type represents the type of database to use.
 	Type dbType
 
-	//Host is the IP or FQDN of the database server. This is not required for SQLite
-	//databases.
-	Host string
-
-	//Port is the port the database listens on. This is not required for SQLite databases.
-	Port uint
-
-	//Name is the name of the database to connect to. This is not required for SQLite databases.
-	Name string
-
-	//User is the user who has access to the database. This is not required for SQLite databases.
-	User string
-
-	//Password is the matching user's password. This is not required for SQLite databases.
+	//Connection information for a non-SQLite database.
+	Host     string
+	Port     uint
+	Name     string
+	User     string
 	Password string
 
-	//SQLitePath is the path where the SQLite database file is located. This is only required for
-	//SQLite databases.
+	//SQLitePath is the path where the SQLite database file is located.
 	SQLitePath string
 
-	//SQLitePragmas is a list of PRAGMA queries to run after connecting to a SQLite
-	//database. Typically this is used to set the journalling mode (default DELETE or
-	//WAL is common).
+	//SQLitePragmas is a list of PRAGMA queries to run when connecting to a SQLite
+	//database. Typically this is used to set the journal mode or busy timeout. PRAGMAs
+	//provided here are in SQLite format with an equals sign (ex.: PRAGMA busy_timeout=5000).
 	//
-	//If using the mattn/sqlite3 library, you can also set pragmas via the filename to
-	//connect to (see https://github.com/mattn/go-sqlite3#connection-string). Any
-	//pragmas provided here will override the values in the filename; these pragmas
-	//will run *after* connecting to the database.
+	//Both the mattn/go-sqlite3 and modernc/sqlite packages allow setting of PRAGMAs
+	//in the database filename path. See the below links. PRAGMA statements here will
+	//be appended (after translating to the correct package's format) to the SQLitePath
+	//so that the PRAGMAs are set properly for the database upon initially connecting.
 	//
-	//Ex.: PRAGMA journal_mode=WAL
+	//Setting PRAGMAs via a query cannot be trusted; the sql package provides a
+	//connection pool and PRAGMAs are set per connection and you cannot be guaranteed
+	//to get the same connection to resuse again.
+	//
+	//https://github.com/mattn/go-sqlite3#connection-string)
+	//https://pkg.go.dev/modernc.org/sqlite#Driver.Open
 	SQLitePragmas []string
 
-	//MapperFunc is used to override the mapping of database column names to struct field names
-	//or struct tags. Mapping of column names is used during queries where StructScan(), Get(),
-	//or Select() is used. By default, column names are not modified in any manner, unlike the
-	//default for "sqlx" where column names are returned as all lower case. The default of not
-	//modifying column names is more useful in our option since you will not need to use struct
-	//tags as much since column names can exactly match exportable struct field names (typically
-	//struct fields used for storing column data are exported).
+	//MapperFunc is used to override the mapping of database column names to struct
+	//field names or struct tags. Mapping of column names is used during queries where
+	//sqlx's StructScan(), Get(), or Select() is used.
+	//
+	//By default, column names are not modified in any manner. This is in contrast to
+	//the default for sqlx where column names are returned as all lower case which
+	//requires your structs to use struct tags for each field. By not modifying column
+	//names you will not need to use struct tags since column names can exactly match
+	//exportable struct field names.
+	//
 	//http://jmoiron.github.io/sqlx/#:~:text=You%20can%20use%20the%20db%20struct%20tag%20to%20specify%20which%20column%20name%20maps%20to%20each%20struct%20field%2C%20or%20set%20a%20new%20default%20mapping%20with%20db.MapperFunc().%20The%20default%20behavior%20is%20to%20use%20strings.Lower%20on%20the%20field%20name%20to%20match%20against%20the%20column%20names.
 	MapperFunc func(string) string
 
-	//DeployQueries is a list of queries used to deploy the database schema. These queries
-	//typically create tables or indexes or insert initial data into the database. The queries
-	//listed here will be executed in order when DeploySchema() is called. The list of queries
-	//provided must be in the correct order to create any tables referred to by a foreign key
-	//first! These queries should be indempotent!
+	//DeployQueries is a list of queries used to deploy the database schema. These
+	//queries typically create tables or indexes or insert initial data into the
+	//database. The queries listed here will be executed in order when DeploySchema()
+	//is called. Make sure the order of the queries listed here makes sense for your
+	//foreign key relationships! Each query should be safe to rerun multiple times!
 	DeployQueries []string
 
 	//DeployFuncs is a list of functions used to deploy the database. Use this for more
-	//complicated deployment queries than the queries provided in DeployQueries. This list
-	//gets executed after the DeployQueries list. You will need to establish and close the
-	//db connection in each funtion. This is typically used when you want to reuse other funcs
-	//you have defined to handle inserting initial users or creating of default values. This
-	//should rarely be used! These queries should be indempotent!
-	DeployFuncs []func() error
+	//complicated deployment queries than the queries provided in DeployQueries. These
+	//funcs get executed after all DeployQueries and should be used much more sparsely
+	//compared to DeployQueries. Each func should be safe to rerun multiple times!
+	DeployFuncs []DeployFunc
 
-	//TranslateCreateTableFuncs is a list of functions run against each DeployQueries that
-	//contains a "CREATE TABLE" clause that modifies the query to translate it from one
-	//database format to another. This functionality is provided so that you can write your
-	//CREATE TABLE queries in one database's format (ex.: MySQL) but deploy your database
-	//in multiple formats (ex.: MySQL & SQLite).
-	//Some default funcs are predefined, names as TF...
-	TranslateCreateTableFuncs []TranslateFunc
+	//TranslateDeployCreateTableFuncs is a list of functions run against each
+	//DeployQuery that contains a CREATE TABLE clause that modifies the query to
+	//translate it from one database format to another. This tooling is used so that
+	//you can write your CREATE TABLE queries in one database format (ex.: MySQL) but
+	//deploy your database in multiple formats (ex.: MySQL & SQLite).
+	//
+	//A list of default funcs are predefined. See funcs in this package starting with
+	//TF...
+	TranslateDeployCreateTableFuncs []TranslateFunc
 
-	//UpdateQueries is a list of queries used to update the database schema. These queries
-	//typically add new columns, alter a column's type, or alter values stored in a column.
-	//The queries listed here will be executed in order when UpdateSchema() is called. The
-	//queries should be safe to be rerun multiple times (i.e.: if UpdateSchema() is called
-	//automatically each time your app starts). These queries should be indempotent!
+	//UpdateQueries is a list of queries used to update the database schema. These
+	//queries typically add new columns, alter a column's type, or drop a column.
+	//The queries listed here will be executed in order when UpdateSchema() is called.
+	//Each query should be safe to rerun multiple times!
 	UpdateQueries []string
 
-	//UpdateIgnoreErrorFuncs is a list of functions run when an UpdateQuery results in an
-	//error and determins if the error can be ignored. This is used to ignore errors for
-	//queries that aren't actual errors (ex.: adding a column that already exists). Each
-	//func in this list should be very narrowly focused, checking both the query and error,
-	//so that real errors aren't ignored by mistake.
-	//Some default funcs are predefined, named as UF...
+	//UpdateFuncs is a list of functions used to deploy the database. Use this for more
+	//complicated updates to the database schema or values stored within the database.
+	//These funcs get executed after all UpdateQueries and should be used much more
+	//sparsely compared to UpdateQueries. Each func should be safe to rerun multiple
+	//times!
+
+	//UpdateIgnoreErrorFuncs is a list of functions run when an UpdateQuery results in
+	//an error and determins if the error can be ignored. This is used to ignore errors
+	//for queries that aren't actual errors (ex.: adding a column that already exists).
+	//Each func in this list should be very narrowly focused, checking both the query
+	//and error, so that real errors aren't ignored by mistake.
+	//
+	//Some default funcs are predefined. See funcs in this package starting with UF...
 	UpdateIgnoreErrorFuncs []UpdateIgnoreErrorFunc
 
 	//Debug turns on diagnostic logging.
 	Debug bool
 
-	//connection is the established connection to a database for performing queries. This is
-	//a "pooled" connection. Use this via the GetConnection() func to run queries against the db.
+	//connection is the established connection to a database for performing queries.
+	//This is the underlying sql connection pool. Access this via the Connection()
+	//func to run queries against the database.
 	connection *sqlx.DB
 }
 
@@ -196,14 +222,14 @@ var validDBTypes = []dbType{
 	DBTypeSQLite,
 }
 
-//DBType returns a dbType. This is used when parsing a user-provided db type to match
-//the db types defined in this package.
+//DBType returns a dbType. This is used when parsing a user-provided database type (such
+//as from a configuration file) to convert to a db type defined in this package.
 func DBType(s string) dbType {
 	return dbType(s)
 }
 
 //valid checks if a provided dbType is one of our supported databases. This is used
-//when validating db config/connection information.
+//when validating.
 func (t dbType) valid() error {
 	contains := slices.Contains(validDBTypes, t)
 	if contains {
@@ -213,129 +239,125 @@ func (t dbType) valid() error {
 	return fmt.Errorf("invalid db type, should be one of '%s', got '%s'", validDBTypes, t)
 }
 
-//defaults
-const (
-	defaultMySQLPort   = 3306
-	defaultMariaDBPort = 3306
-)
-
 //errors
 var (
-	//ErrConnected is returned when a database connection is already established and a user is
-	//trying to connect or trying to modify a config that is already in use.
+	//ErrConnected is returned when a trying to establish a connection to an already
+	//connected-to database.
 	ErrConnected = errors.New("sqldb: connection already established")
 
-	//ErrSQLitePathNotProvided is returned when user doesn't provided a path to the SQLite database
-	//file, or the path provided is all whitespace.
+	//ErrSQLitePathNotProvided is returned when user doesn't provided a path to the
+	//SQLite database file, or the path provided is all whitespace.
 	ErrSQLitePathNotProvided = errors.New("sqldb: SQLite path not provided")
 
-	//ErrHostNotProvided is returned when user doesn't provide the host (IP or FQDN) where a MySQL
-	//or MariaDB server is running.
-	ErrHostNotProvided = errors.New("sqldb: Database server host not provided")
+	//ErrHostNotProvided is returned when user doesn't provide the host IP or FQDN
+	//of a MySQL or MariaDB server.
+	ErrHostNotProvided = errors.New("sqldb: database server host not provided")
 
-	//ErrInvalidPort is returned when user doesn't provide, or provided an invalid port, for where
-	//the MySQL or MariaDB server is running.
-	ErrInvalidPort = errors.New("sqldb: Database server port invalid")
+	//ErrInvalidPort is returned when user doesn't provide, or provided an invalid
+	//port, of a MySQL or MariaDB server.
+	ErrInvalidPort = errors.New("sqldb: database server port invalid")
 
-	//ErrNameNotProvided is returned when user doesn't provide a name for a database.
-	ErrNameNotProvided = errors.New("sqldb: Database name not provided")
+	//ErrNameNotProvided is returned when user doesn't provide a name of a database.
+	ErrNameNotProvided = errors.New("sqldb: database name not provided")
 
-	//ErrUserNotProvided is returned when user doesn't provide a user to connect to the database
-	//server with.
-	ErrUserNotProvided = errors.New("sqldb: Database user not provided")
+	//ErrUserNotProvided is returned when user doesn't provide a user to connect to
+	//the database server with.
+	ErrUserNotProvided = errors.New("sqldb: database user not provided")
 
-	//ErrPasswordNotProvided is returned when user doesn't provide the password to connect to the
-	//database with. We do not support blank passwords for security.
-	ErrPasswordNotProvided = errors.New("sqldb: Password for database user not provided")
+	//ErrPasswordNotProvided is returned when user doesn't provide the password to
+	//connect to the database with. Blank passwords are not supported for security.
+	ErrPasswordNotProvided = errors.New("sqldb: password for database user not provided")
 
-	//ErrNoColumnsGiven is returned when user is trying to build a column list for a query but
-	//not columns were provided.
-	ErrNoColumnsGiven = errors.New("sqldb: No columns provided")
+	//ErrNoColumnsGiven is returned when user is trying to build a column list for a
+	//query but no columns were provided.
+	ErrNoColumnsGiven = errors.New("sqldb: no columns provided")
 
-	//ErrDoubleCommaInColumnString is returned when building a column string for a query but
-	//a double comma exists which would cause the query to not run correctly. Double commas
-	//are usually due to an empty column name being provided or a comma being added to the
-	//column name by mistake.
-	ErrDoubleCommaInColumnString = errors.New("sqldb: Extra comma in column name")
+	//ErrDoubleCommaInColumnString is returned when building a column string for a
+	//query but a double comma exists which would cause the query to not run correctly.
+	//Double commas are usually due to an empty column name being provided or a comma
+	//being added to the column name by mistake.
+	ErrDoubleCommaInColumnString = errors.New("sqldb: extra comma in column name")
 )
 
-//config is the package level saved config. This stores your config when you want to store it for
-//global use. This is used when you call one of the NewDefaultConfig() funcs which return a pointer
-//to this config.
+//config is the package level saved config. This stores your config when you want to
+//use this package as a singleton and store your config for global use. This is used
+//when you call one of the NewDefaultConfig() funcs which returns a pointer to this
+//config.
 var config Config
 
-//NewConfig returns a base configuration that will need to be modified for use with a db.
-//Typically you would use New...Config() instead.
-func NewConfig(t dbType) (c *Config, err error) {
+//NewConfig returns a base configuration that will need to be modified for use to
+//connect to and interact with a database. Typically you would use New...Config()
+//instead.
+func NewConfig(t dbType) (cfg *Config, err error) {
 	err = t.valid()
 	if err != nil {
 		return
 	}
 
-	c = &Config{
+	cfg = &Config{
 		Type:       t,
 		MapperFunc: DefaultMapperFunc,
 	}
 	return
 }
 
-//DefaultConfig initializes the package level config. This wraps around NewConfig(). Typically
-//you would use Default...Config() instead.
+//DefaultConfig initializes the globally accessible package level config with some
+//defaults set. Typically you would use Default...Config() instead.
 func DefaultConfig(t dbType) (err error) {
 	cfg, err := NewConfig(t)
 	config = *cfg
-
 	return
 }
 
-//Save saves a configuration to the package level config. Use this in conjunction with New...Config
-//when you want to heavily customize the config. This does not use a method so that any modifications
-//done to the original config aren't propagated to the package level config without calling Save()
-//again.
-func Save(c Config) {
-	config = c
+//Save saves a configuration to the package level config. Use this in conjunction with
+//New...Config(), or just sqldb.Config{}, when you want to heavily customize the
+//config. This is not a method on Config so that any modifications done to the original
+//config after Save() is called aren't propagated to the package level config without
+//calling Save() again.
+func Save(cfg Config) {
+	config = cfg
 }
 
 //validate handles validation of a provided config. This is called in Connect().
-func (c *Config) validate() (err error) {
-	//sanitize
-	c.SQLitePath = strings.TrimSpace(c.SQLitePath)
-	c.Host = strings.TrimSpace(c.Host)
-	c.Name = strings.TrimSpace(c.Name)
-	c.User = strings.TrimSpace(c.User)
+func (cfg *Config) validate() (err error) {
+	//Sanitize.
+	cfg.SQLitePath = strings.TrimSpace(cfg.SQLitePath)
+	cfg.Host = strings.TrimSpace(cfg.Host)
+	cfg.Name = strings.TrimSpace(cfg.Name)
+	cfg.User = strings.TrimSpace(cfg.User)
 
-	//Make sure db type is valid. A user can modify this to a string via
-	//"c.Type = 'asdf'" even though Type has a specific dbType type. This catches
+	//Make sure db type is valid. A user can modify this to a string of any value via
+	//"cfg.Type = 'asdf'" even though Type has a specific dbType type. This catches
 	//this slight possibility.
-	err = c.Type.valid()
+	err = cfg.Type.valid()
 	if err != nil {
 		return
 	}
 
 	//Check config based on db type since each type of db has different requirements.
-	switch c.Type {
+	switch cfg.Type {
 	case DBTypeSQLite:
-		if c.SQLitePath == "" {
+		if cfg.SQLitePath == "" {
 			return ErrSQLitePathNotProvided
 		}
 
-		//We don't check PRAGMAs since they are just strings. When we run each on the
-		//db, we will return any errors.
+		//We don't check PRAGMAs since they are just strings. We will return any
+		//errors when the database is connected to via Open().
 
 	case DBTypeMySQL, DBTypeMariaDB:
-		if c.Host == "" {
+		if cfg.Host == "" {
 			return ErrHostNotProvided
 		}
-		if c.Port == 0 || c.Port > 65535 {
+		if cfg.Port == 0 || cfg.Port > 65535 {
 			return ErrInvalidPort
 		}
-		if c.Name == "" {
+		if cfg.Name == "" {
 			return ErrNameNotProvided
 		}
-		if c.User == "" {
+		if cfg.User == "" {
 			return ErrUserNotProvided
 		}
-		if c.Password == "" {
+		if cfg.Password == "" {
 			return ErrPasswordNotProvided
 		}
 	}
@@ -343,34 +365,49 @@ func (c *Config) validate() (err error) {
 	return
 }
 
-//buildConnectionString creates the string used to connect to a database. The connection string
-//returned is built for a specific database type since each type has different parameters needed
-//for the connection. Note that when building the connection string for mysql or mariadb, we
-//have to omit the databasename if we are deploying the database, since, obviously, the database
-//does not exist yet. The database name is only appended to the connection string when the
-//database exists.
-func (c *Config) buildConnectionString(deployingDB bool) (connString string) {
-	switch c.Type {
+//buildConnectionString creates the string used to connect to a database. The
+//returned values is built for a specific database type since each type has different
+//parameters needed for the connection.
+//
+//Note that when building the connection string for MySQL or MariaDB, we have to omit
+//the databasename if we are deploying the database, since, obviously, the database
+//does not exist yet. The database name is only appended to the connection string when
+//the database exists.
+//
+//When building a connection string for SQLite, we attempt to translate and listed
+//SQLitePragmas to the correct format based on the SQLite library in use and appending
+//these pragmas to the filepath. This is done since you can only reliably set pragmas
+//when first connecting to the SQLite database, not anytime afterward, due to connection
+//pooling and pragmas being set per-connection.
+func (cfg *Config) buildConnectionString(deployingDB bool) (connString string) {
+	switch cfg.Type {
 	case DBTypeMariaDB, DBTypeMySQL:
-		//for mysql or mariadb, use connection string tooling and formatter instead of
-		//us building the connection string manually.
+		//For MySQL or MariaDB, use connection string tooling and formatter instead
+		//of building the connection string manually.
 		dbConnectionConfig := mysql.NewConfig()
-		dbConnectionConfig.User = c.User
-		dbConnectionConfig.Passwd = c.Password
+		dbConnectionConfig.User = cfg.User
+		dbConnectionConfig.Passwd = cfg.Password
 		dbConnectionConfig.Net = "tcp"
-		dbConnectionConfig.Addr = net.JoinHostPort(c.Host, strconv.Itoa(int(c.Port)))
+		dbConnectionConfig.Addr = net.JoinHostPort(cfg.Host, strconv.Itoa(int(cfg.Port)))
 
 		if !deployingDB {
-			dbConnectionConfig.DBName = c.Name
+			dbConnectionConfig.DBName = cfg.Name
 		}
 
 		connString = dbConnectionConfig.FormatDSN()
 
 	case DBTypeSQLite:
-		//for sqlite, the connection string is simply a path to a file. We do not set
-		//pragmas in the connection string since it is messy, instead we set them with
-		//PRAGMA queries once the database connection is established.
-		connString = c.SQLitePath
+		connString = cfg.SQLitePath
+
+		//For SQLite, the connection string is simply a path to a file. However, we
+		//need to append pragmas as needed.
+		if len(cfg.SQLitePragmas) != 0 {
+			pragmasToAdd := buildPragmaString(cfg.SQLitePragmas)
+			connString += pragmasToAdd
+
+			cfg.debugPrintln("PRAGMA String", pragmasToAdd)
+			cfg.debugPrintln("Path With PRAGMAS", connString)
+		}
 
 	default:
 		//we should never hit this since we already validated the config in validate().
@@ -379,7 +416,7 @@ func (c *Config) buildConnectionString(deployingDB bool) (connString string) {
 	return
 }
 
-//getDriver returns the golang sql driver used for the chosen database type.
+//getDriver returns the Go sql driver used for the chosen database type.
 func getDriver(t dbType) (driver string, err error) {
 	if err := t.valid(); err != nil {
 		return "", err
@@ -389,7 +426,9 @@ func getDriver(t dbType) (driver string, err error) {
 	case DBTypeMySQL, DBTypeMariaDB:
 		driver = "mysql"
 	case DBTypeSQLite:
-		driver = sqliteDriverName //see sqlite subfiles based on library used.
+		//See sqlite subfiles based on library used. Correct driver is chosen based
+		//on build tags.
+		driver = sqliteDriverName
 	}
 
 	return
@@ -398,26 +437,26 @@ func getDriver(t dbType) (driver string, err error) {
 //Connect connects to the database. This sets the database driver in the config,
 //establishes the database connection, and saves the connection pool for use in making
 //queries. For SQLite this also runs any PRAGMA commands.
-func (c *Config) Connect() (err error) {
+func (cfg *Config) Connect() (err error) {
 	//Make sure the connection isn't already established to prevent overwriting it.
 	//This forces users to call Close() first to prevent any incorrect db usage.
-	if c.Connected() {
+	if cfg.Connected() {
 		return ErrConnected
 	}
 
 	//Make sure the config is valid.
-	err = c.validate()
+	err = cfg.validate()
 	if err != nil {
 		return
 	}
 
 	//Get the connection string used to connect to the database.
-	connString := c.buildConnectionString(false)
+	connString := cfg.buildConnectionString(false)
 
-	//Get the correct driver based on the database type.
-	//This is set based on the empty (_) imported package.
-	//Error should never occur this since we already validated the config in validate().
-	driver, err := getDriver(c.Type)
+	//Get the correct driver based on the database type. If using SQLite, the correct
+	//driver is chosen based on build tags. Error should never occur this since we
+	//already validated the config in validate().
+	driver, err := getDriver(cfg.Type)
 	if err != nil {
 		return
 	}
@@ -425,9 +464,9 @@ func (c *Config) Connect() (err error) {
 	//Connect to the database.
 	//For SQLite, check if the database file exists. This func will not create the
 	//database file. The database file needs to be created first with Deploy(). If
-	//the database is in-memory, we can ignore this error
-	if c.IsSQLite() && c.SQLitePath != InMemoryFilePathRacy && c.SQLitePath != InMemoryFilePathRaceSafe {
-		_, err = os.Stat(c.SQLitePath)
+	//the database is in-memory, we can ignore this error.
+	if cfg.IsSQLite() && cfg.SQLitePath != InMemoryFilePathRacy && cfg.SQLitePath != InMemoryFilePathRaceSafe {
+		_, err = os.Stat(cfg.SQLitePath)
 		if os.IsNotExist(err) {
 			return err
 		}
@@ -438,7 +477,7 @@ func (c *Config) Connect() (err error) {
 	//
 	//Note no `defer conn.Close()` since we want to keep the db connection alive for
 	//future use in running queries. It is the job of whatever func called Connect to
-	//call Close.
+	//call Close (or defer cfg.Close()).
 	conn, err := sqlx.Open(driver, connString)
 	if err != nil {
 		return
@@ -451,51 +490,20 @@ func (c *Config) Connect() (err error) {
 		return
 	}
 
-	//Run any PRAGMA queries for SQLite as needed. Cannot use prepare, then exec, as
-	//this causes a "cannot commit transaction - SQL statements in process" error.
-	if c.IsSQLite() {
-		for _, p := range c.SQLitePragmas {
-			c.debugPrintln("sqldb.Connect", "Setting SQLite PRAGMA: "+p)
-			_, innerErr := conn.Exec(p)
-			if innerErr != nil {
-				return fmt.Errorf("error with PRAGMA %s, %w", p, innerErr)
-			}
-		}
-	}
-
-	//Make sure SQLite is set to only one max connection when using DELETE mode. This
-	//makes sure two writers don't attempt to write to the database at the same time
-	//which is something SQLite doesn't support. This was added to fix bug noticed
-	//with modernc/sqlite library whereas the error (SQLITE_BUSY) doesn't occur with
-	//mattn/sqlite3.
-	//
-	//TODO: this needs further investigation.
-	//
-	// if c.IsSQLite() {
-	// 	conn.SetMaxOpenConns(1)
-	// }
-
 	//Set the mapper for mapping column names to struct fields.
-	if c.MapperFunc != nil {
-		conn.MapperFunc(c.MapperFunc)
+	if cfg.MapperFunc != nil {
+		conn.MapperFunc(cfg.MapperFunc)
 	}
 
 	//Save the connection for running future queries.
-	c.connection = conn
+	cfg.connection = conn
 
 	//Diagnostic logging.
-	switch c.Type {
+	switch cfg.Type {
 	case DBTypeMySQL, DBTypeMariaDB:
-		c.debugPrintln("sqldb.Connect", "Connecting to database "+c.Name+" on "+c.Host+" with user "+c.User)
+		cfg.debugPrintln("sqldb.Connect", "Connecting to database "+cfg.Name+" on "+cfg.Host+" with user "+cfg.User)
 	case DBTypeSQLite:
-		journalMode, err := c.GetSQLiteJournalMode()
-		if err != nil {
-			c.debugPrintln("sqldb.Connect", "Could not look up journal mode for debug logging, skipping.", err)
-		}
-
-		maxOpenConns := conn.Stats().MaxOpenConnections
-
-		c.debugPrintln("sqldb.Connect", "Connecting to database "+c.SQLitePath+" (Journal Mode: "+journalMode+", Max Open Connections.: "+strconv.Itoa(maxOpenConns)+")")
+		cfg.debugPrintln("sqldb.Connect", "Connecting to database "+cfg.SQLitePath+".")
 	}
 
 	return
@@ -507,8 +515,8 @@ func Connect() (err error) {
 }
 
 //Close closes the connection to the database.
-func (c *Config) Close() (err error) {
-	return c.connection.Close()
+func (cfg *Config) Close() (err error) {
+	return cfg.connection.Close()
 }
 
 //Close closes the connection using the default package level config.
@@ -517,9 +525,9 @@ func Close() (err error) {
 }
 
 //Connected returns if the config represents an established connection to the database.
-func (c *Config) Connected() bool {
+func (cfg *Config) Connected() bool {
 	//A connection has never been established.
-	if c.connection == nil {
+	if cfg.connection == nil {
 		return false
 	}
 
@@ -527,12 +535,12 @@ func (c *Config) Connected() bool {
 	//this case, it still stores the previous connection's info for some reason. We
 	//don't set it to nil in Close() since that isn't how the sql package handles
 	//closing.
-	err := c.connection.Ping()
+	err := cfg.connection.Ping()
 	if err != nil {
 		return false
 	}
 
-	//a connection was been established and is open, ping succeeded
+	//A connection was been established and is open, ping succeeded.
 	return true
 }
 
@@ -541,9 +549,10 @@ func Connected() bool {
 	return config.Connected()
 }
 
-//Connection returns the database connection stored in a config for use in running queries
-func (c *Config) Connection() *sqlx.DB {
-	return c.connection
+//Connection returns the database connection stored in a config for use in running
+//queries.
+func (cfg *Config) Connection() *sqlx.DB {
+	return cfg.connection
 }
 
 //Connection returns the database connection for the package level config.
@@ -553,9 +562,9 @@ func Connection() *sqlx.DB {
 
 //IsMySQLOrMariaDB returns if the database is a MySQL or MariaDB. This is useful
 //since MariaDB is a fork of MySQL and most things are compatible; this way you
-//don't need to check IsMySQL and IsMariaDB.
-func (c *Config) IsMySQLOrMariaDB() bool {
-	return c.Type == DBTypeMySQL || c.Type == DBTypeMariaDB
+//don't need to check IsMySQL() and IsMariaDB().
+func (cfg *Config) IsMySQLOrMariaDB() bool {
+	return cfg.Type == DBTypeMySQL || cfg.Type == DBTypeMariaDB
 }
 
 //DefaultMapperFunc is the default MapperFunc set on configs. It returns the column
@@ -565,7 +574,7 @@ func DefaultMapperFunc(s string) string {
 }
 
 //GetDefaultConfig returns the package level saved config.
-func GetDefaultConfig() (c *Config) {
+func GetDefaultConfig() *Config {
 	return &config
 }
 
@@ -574,33 +583,38 @@ func MapperFunc(m func(string) string) {
 	config.MapperFunc = m
 }
 
-//TranslateCreateTableFuncs sets the translation funcs for creating a table for the package
-//level config.
-func TranslateCreateTableFuncs(fs []TranslateFunc) {
-	config.TranslateCreateTableFuncs = fs
+//TranslateDeployCreateTableFuncs sets the translation funcs for creating a table for
+//the package level config.
+func TranslateDeployCreateTableFuncs(fs []TranslateFunc) {
+	config.TranslateDeployCreateTableFuncs = fs
 }
 
 //SetDeployQueries sets the list of queries to deploy the database schema for the package
-//level config. Beware of the order! Queries must be listed in order where any foreign
-//key tables were created prior.
+//level config.
 func SetDeployQueries(qs []string) {
 	config.DeployQueries = qs
 }
 
 //SetDeployFuncs sets the list of funcs to deploy the database schema for the package
 //level config.
-func SetDeployFuncs(fs []func() error) {
+func SetDeployFuncs(fs []DeployFunc) {
 	config.DeployFuncs = fs
 }
 
-//SetUpdateQueries sets the list of funcs to update the database schema for the package level
-//config.
+//SetUpdateQueries sets the list of queries to update the database schema for the package
+//level config.
 func SetUpdateQueries(qs []string) {
 	config.UpdateQueries = qs
 }
 
-//SetUpdateIgnoreErrorFuncs sets the list of funcs to handle update schema errors for the
-//package level config.
+//SetUpdateFuncs sets the list of funcs to update the database schema for the package
+//level config.
+func SetUpdateFuncs(qs []string) {
+	config.UpdateQueries = qs
+}
+
+//SetUpdateIgnoreErrorFuncs sets the list of funcs to handle update schema errors for
+//the package level config.
 func SetUpdateIgnoreErrorFuncs(fs []UpdateIgnoreErrorFunc) {
 	config.UpdateIgnoreErrorFuncs = fs
 }
