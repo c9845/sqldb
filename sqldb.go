@@ -165,7 +165,7 @@ type Config struct {
 	//complicated deployment queries than the queries provided in DeployQueries. These
 	//funcs get executed after all DeployQueries and should be used much more sparsely
 	//compared to DeployQueries. Each func should be safe to rerun multiple times!
-	DeployFuncs []DeployFunc
+	DeployFuncs []func(*sqlx.DB) error
 
 	//TranslateDeployCreateTableFuncs is a list of functions run against each
 	//DeployQuery that contains a CREATE TABLE clause that modifies the query to
@@ -175,7 +175,7 @@ type Config struct {
 	//
 	//A list of default funcs are predefined. See funcs in this package starting with
 	//TF...
-	TranslateDeployCreateTableFuncs []TranslateFunc
+	TranslateDeployCreateTableFuncs []func(string) string
 
 	//UpdateQueries is a list of queries used to update the database schema. These
 	//queries typically add new columns, alter a column's type, or drop a column.
@@ -188,6 +188,7 @@ type Config struct {
 	//These funcs get executed after all UpdateQueries and should be used much more
 	//sparsely compared to UpdateQueries. Each func should be safe to rerun multiple
 	//times!
+	UpdateFuncs []func(*sqlx.Tx) error
 
 	//UpdateIgnoreErrorFuncs is a list of functions run when an UpdateQuery results in
 	//an error and determins if the error can be ignored. This is used to ignore errors
@@ -316,6 +317,11 @@ func DefaultConfig(t dbType) (err error) {
 //calling Save() again.
 func Save(cfg Config) {
 	config = cfg
+}
+
+//GetDefaultConfig returns the package level saved config.
+func GetDefaultConfig() *Config {
+	return &config
 }
 
 //validate handles validation of a provided config. This is called in Connect().
@@ -509,7 +515,8 @@ func (cfg *Config) Connect() (err error) {
 	return
 }
 
-//Connect handles the connection to the database using the default package level config
+//Connect handles the connection to the database using the default package level
+//config.
 func Connect() (err error) {
 	return config.Connect()
 }
@@ -567,56 +574,21 @@ func (cfg *Config) IsMySQLOrMariaDB() bool {
 	return cfg.Type == DBTypeMySQL || cfg.Type == DBTypeMariaDB
 }
 
+//IsMySQLOrMariaDB returns if the database is a MySQL or MariaDB for the package
+//level config.
+func IsMySQLOrMariaDB() bool {
+	return config.IsMySQLOrMariaDB()
+}
+
 //DefaultMapperFunc is the default MapperFunc set on configs. It returns the column
 //names unmodified.
 func DefaultMapperFunc(s string) string {
 	return s
 }
 
-//GetDefaultConfig returns the package level saved config.
-func GetDefaultConfig() *Config {
-	return &config
-}
-
 //MapperFunc sets the mapper func for the package level config.
 func MapperFunc(m func(string) string) {
 	config.MapperFunc = m
-}
-
-//TranslateDeployCreateTableFuncs sets the translation funcs for creating a table for
-//the package level config.
-func TranslateDeployCreateTableFuncs(fs []TranslateFunc) {
-	config.TranslateDeployCreateTableFuncs = fs
-}
-
-//SetDeployQueries sets the list of queries to deploy the database schema for the package
-//level config.
-func SetDeployQueries(qs []string) {
-	config.DeployQueries = qs
-}
-
-//SetDeployFuncs sets the list of funcs to deploy the database schema for the package
-//level config.
-func SetDeployFuncs(fs []DeployFunc) {
-	config.DeployFuncs = fs
-}
-
-//SetUpdateQueries sets the list of queries to update the database schema for the package
-//level config.
-func SetUpdateQueries(qs []string) {
-	config.UpdateQueries = qs
-}
-
-//SetUpdateFuncs sets the list of funcs to update the database schema for the package
-//level config.
-func SetUpdateFuncs(qs []string) {
-	config.UpdateQueries = qs
-}
-
-//SetUpdateIgnoreErrorFuncs sets the list of funcs to handle update schema errors for
-//the package level config.
-func SetUpdateIgnoreErrorFuncs(fs []UpdateIgnoreErrorFunc) {
-	config.UpdateIgnoreErrorFuncs = fs
 }
 
 //println performs log.Println if Debug is true for the config. This is just a helper

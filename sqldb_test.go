@@ -386,37 +386,6 @@ func TestDefaults(t *testing.T) {
 		t.Fatal("MapperFunc not set correctly")
 		return
 	}
-
-	f2 := func(in string) (out string) {
-		out = in
-		return
-	}
-	TranslateCreateTableFuncs([]TranslateFunc{f2})
-	if len(config.TranslateCreateTableFuncs) != 1 {
-		t.Fatal("translate create table func not added")
-		return
-	}
-
-	q := `
-		CREATE TABLE IF NOT EXISTS users (
-			ID INT NOT NULL AUTO_INCREMENT,
-			Username VARCHAR(255) NOT NULL,
-			PRIMARY KEY(ID)
-		)
-	`
-	SetDeployQueries([]string{q})
-	if len(config.DeployQueries) != 1 {
-		t.Fatal("deploy queries not added")
-		return
-	}
-
-	u := "ALTER TABLE users ADD COLUMN Fname VARCHAR(255) NOT NULL DEFAULT ''"
-	SetUpdateQueries([]string{u})
-	if len(config.UpdateQueries) != 1 {
-		t.Fatal("update queries not added")
-		return
-	}
-
 }
 
 func TestConnect(t *testing.T) {
@@ -439,26 +408,8 @@ func TestConnect(t *testing.T) {
 	}
 	defer c.Close()
 
-	//Test setting some pragmas
-	c.Close()
-	c.SQLitePragmas = []string{
-		"PRAGMA busy_timeout = 5959",
-	}
-	err = c.Connect()
-	if err != nil {
-		t.Fatal(err)
-		return
-	}
-	defer c.Close()
-
-	bt, err := c.GetSQLiteBusyTimeout()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if bt != 5959 {
-		t.Fatal("busy timeout not set correctly", bt)
-		return
-	}
+	//Test setting some pragmas.
+	//TODO
 }
 
 func TestClose(t *testing.T) {

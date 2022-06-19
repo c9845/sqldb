@@ -4,36 +4,27 @@ import (
 	"strings"
 )
 
-//TranslateFunc is function used to translate a query from one database format
-//to another. This is used when you write your queries for one database (ex.: MySQL)
-//but you allow your app to be deployed in multiple database formats (ex.: MySQL &
-//SQLite). These funcs perform the necessary conversions on a query so that you do
-//not need to write your queries in each database format.
-type TranslateFunc func(string) string
-
-//translateCreateTable runs the TranslateCreateTableFuncs funcs defined for a database
-//connection when DeploySchema() is called.
-func (c *Config) translateCreateTable(in string) (out string) {
-	//working copy of query to modify as needed.
-	query := in
-
+//runTranslateDeployCreateTableFuncs runs the list of TranslateDeployCreateTableFuncs
+//funcs defined on a query when Deploy() is called.
+func (c *Config) runTranslateDeployCreateTableFuncs(originalQuery string) (translatedQuery string) {
 	//Make sure query is a CREATE TABLE query.
-	if !strings.Contains(strings.ToUpper(in), "CREATE TABLE") {
-		out = query
-		return
+	if !strings.Contains(strings.ToUpper(originalQuery), "CREATE TABLE") {
+		return originalQuery
 	}
 
-	//run each translate funcs
-	for _, f := range c.TranslateCreateTableFuncs {
-		query = f(query)
+	//Run each translate func. A query may be translated by multiple funcs.
+	workingQuery := originalQuery
+	for _, f := range c.TranslateDeployCreateTableFuncs {
+		workingQuery = f(workingQuery)
 	}
 
-	//return the translated query
-	out = query
-	return out
+	//Return the completely translated query.
+	translatedQuery = workingQuery
+	return
 }
 
-//TFMySQLToSQLiteReformatID reformats the ID column to a SQLite format.
+//TFMySQLToSQLiteReformatID reformats the ID column from a MySQL format to a SQLite
+//format.
 func TFMySQLToSQLiteReformatID(in string) (out string) {
 	before := "ID INT NOT NULL AUTO_INCREMENT"
 	after := "ID INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL"
@@ -41,31 +32,24 @@ func TFMySQLToSQLiteReformatID(in string) (out string) {
 	return
 }
 
-//TFMySQLToSQLiteRemovePrimaryKeyDefinition removes the primary key definition
-//for a SQLite query since SQLite doesn't use this. We also have to remove
-//the comma preceeding this line too.
+//TFMySQLToSQLiteRemovePrimaryKeyDefinition removes the primary key definition from a
+//MySQL query for use in SQLite. SQLite doesn't use this PRIMARY KEY(ID), the PRIMARY
+//KEY note is assigned as part of the column definition. We also have to remove the
+//comma preceeding this line too since a trailing comma creates a bad query!
 func TFMySQLToSQLiteRemovePrimaryKeyDefinition(in string) (out string) {
-	out = in
-
 	before := "PRIMARY KEY(ID)"
 	after := ""
-	primaryKeyIndex := strings.Index(in, before)
-	if primaryKeyIndex == -1 {
-		return
-	}
+	out = strings.Replace(in, before, after, 1)
 
-	choppedQ := out[:primaryKeyIndex]
-	lastCommaIndex := strings.LastIndex(choppedQ, ",")
-	out = out[:lastCommaIndex] + out[lastCommaIndex+1:]
-	out = strings.Replace(out, before, after, 1)
+	out = strings.TrimSuffix(out, ",")
 	return
 }
 
 //TFMySQLToSQLiteReformatDefaultTimestamp handles converting UTC_TIMESTAMP values to
-//CURRENT_TIMESTAMP values. On MySQL and MariaDB, both UTC_TIMESTAMP and
-//CURRENT_TIMESTAMP values exist, with CURRENT_TIMESTAMP returning a datetime
-//in the server's local timezone. However, SQLite doesn't have UTC_TIMESTAMP
-//and CURRENT_TIMESTAMP returns values in UTC timezone.
+//CURRENT_TIMESTAMP values. On MySQL and MariaDB, both UTC_TIMESTAMP and CURRENT_TIMESTAMP
+//values exist, with CURRENT_TIMESTAMP returning a datetime in the server's local
+//timezone. However, SQLite doesn't have UTC_TIMESTAMP and CURRENT_TIMESTAMP is
+//different, it returns values in UTC timezone.
 func TFMySQLToSQLiteReformatDefaultTimestamp(in string) (out string) {
 	before := "DEFAULT UTC_TIMESTAMP"
 	after := "DEFAULT CURRENT_TIMESTAMP"
@@ -74,11 +58,13 @@ func TFMySQLToSQLiteReformatDefaultTimestamp(in string) (out string) {
 }
 
 //TFMySQLToSQLiteReformatDatetime replaces DATETIME columns with TEXT columns. SQLite
-//doesn't have a DATETIME column so values stored in these columns can be converted
-//oddly. Use TEXT column type for SQLite b/c SQLite golang driver converts DATETIME
-//columns in yyyy-mm-dd hh:mm:ss format to yyyy-mm-ddThh:mm:ssZ upon returning value
-//which isn'texpected or what we would usually want; instead user can reformat value
-//returned from database as needed using time package.
+//doesn't have a DATETIME column type so values stored in these columns can be converted
+//oddly. Just use TEXT column type for SQLite for ease of use.
+//
+//The mattn/go-sqlite3 library converts DATETIME columns in yyyy-mm-dd hh:mm:ss format
+//to yyyy-mm-ddThh:mm:ssZ upon returning values (via a SELECT query) which is unexpected
+//since that is is not what is stored in the database when using the sqlite3 command
+//line tool.
 func TFMySQLToSQLiteReformatDatetime(in string) (out string) {
 	before := "DATETIME"
 	after := "TEXT"

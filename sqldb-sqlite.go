@@ -26,13 +26,6 @@ const (
 	InMemoryFilePathRaceSafe = "file::memory:?cache=shared"
 )
 
-var sqliteDefaultPragmas = []string{
-	//The mattn/go-sqlite3 sets this value by default. Use this for modernc/sqlite as
-	//well.
-	//https://github.com/mattn/go-sqlite3/blob/ae2a61f847e10e6dd771ecd4e1c55e0421cdc7f9/sqlite3.go#L1086
-	"PRAGMA busy_timeout = 5000",
-}
-
 //NewSQLiteConfig returns a config for connecting to a SQLite database.
 func NewSQLiteConfig(pathToFile string) (cfg *Config) {
 	//The returned error can be ignored since it only returns if a bad db type is
@@ -41,7 +34,7 @@ func NewSQLiteConfig(pathToFile string) (cfg *Config) {
 
 	cfg.SQLitePath = pathToFile
 	cfg.SQLitePragmas = sqliteDefaultPragmas
-	cfg.TranslateDeployCreateTableFuncs = []TranslateFunc{
+	cfg.TranslateDeployCreateTableFuncs = []func(string) string{
 		TFMySQLToSQLiteReformatID,
 		TFMySQLToSQLiteRemovePrimaryKeyDefinition,
 		TFMySQLToSQLiteReformatDefaultTimestamp,
@@ -141,4 +134,11 @@ func buildPragmaString(pragmas []string) (filenamePragmaString string) {
 	}
 
 	return "?" + v.Encode()
+}
+
+//GetDefaultSQLitePragmas returns the default PRAGMAs this package defines for use with
+//either SQLite library. This can be helpful for debugging. We don't just export the
+//sqliteDefaultPragmas slice so that it cannot be modified.
+func GetDefaultSQLitePragmas() []string {
+	return sqliteDefaultPragmas
 }

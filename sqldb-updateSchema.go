@@ -3,33 +3,48 @@ package sqldb
 import (
 	"context"
 	"log"
+	"path"
+	"reflect"
+	"runtime"
 	"strings"
 )
 
 //UpdateSchemaOptions provides options when updating a schema.
+//
+//CloseConnection determines if the database connection should be closed after ths
+//func successfully completes. This was added to support SQLite in-memory databases
+//since each connection to an im-memory db uses a new database, so if we deploy with
+//a connection we need to reuse it to run queries.
 type UpdateSchemaOptions struct {
 	CloseConnection bool
 }
 
-//UpdateSchemaWithOps updates a database by running the list of UpdateQueries defined
-//in config. This is typically used to add new colums, alter columns, add indexes, or
-//updates values stored in the database.
+//UpdateSchemaWithOps updates a database by running the list of UpdateQueries and
+//UpdateFuncs defined in config. This is typically used to add new colums, alter
+//columns, add indexes, or updates values stored in the database.
 //
-//Although each UpdateQuery should be indempotent, you should still not call this func
-//each time your app starts or otherwise. Typically you would check if the database
-//has already been updated or use a flag, such as  --update-db, to run this func.
+//Although each UpdateQuery and DeployFunc should be indempotent, you should still
+//not call this func each time your app starts or otherwise. Typically you would
+//check if the database has already been updated or use a flag, such as  --update-db,
+//to run this func.
 //
 //When each UpdateQuery is run, if an error occurs the error is passed into each defined
 //UpdateIgnoreErrorFuncs to determine if and how the error needs to be handled.
 //Sometimes an error during a schema update isn't actually an error we need to handle,
 //such as adding a column that already exists. Most times these types of errors occur
-//because the UpdateSchema func is being rerun. The list of funcs you add to0
+//because the UpdateSchema func is being rerun. The list of funcs you add to
 //UpdateIgnoreErrorFuncs will check the returned error message and query and determine
 //if the error can be ignored.
-func (c *Config) UpdateSchemaWithOps(ops UpdateSchemaOptions) (err error) {
+func (cfg *Config) UpdateSchemaWithOps(ops UpdateSchemaOptions) (err error) {
 	//Check if a connection to the database is already established, and if so, use it.
-	if !c.Connected() {
-		err = c.Connect()
+	//If not, try to connect.
+	//
+	//This differs from Deploy(), where if a connection already exists, we exit, so
+	//that we can support the Deploy option CloseConnection being false. I.e.: we want
+	//to use the same connection we deployed with to update the database. This is used
+	//mostly for SQLite in-memory dbs where we need to reuse the same connection.
+	if !cfg.Connected() {
+		err = cfg.Connect()
 		if err != nil {
 			return
 		}
@@ -37,61 +52,84 @@ func (c *Config) UpdateSchemaWithOps(ops UpdateSchemaOptions) (err error) {
 
 	//Check if the connection should be closed after this func completes.
 	if ops.CloseConnection {
-		defer c.Close()
+		defer cfg.Close()
 	}
 
 	//Make sure the config is valid.
-	err = c.validate()
+	err = cfg.validate()
 	if err != nil {
 		return
 	}
 
 	//Start a transaction. We use a transaction to update the schema so that either
 	//the entire database is updated successfully or none of the database is updated.
-	//This prevents the database from being in a half-updated state.
+	//This prevents the database from ending up in a half-updated state.
 	ctx := context.Background()
-	connection := c.Connection()
+	connection := cfg.Connection()
 	tx, err := connection.BeginTxx(ctx, nil)
 	if err != nil {
-		c.Close()
+		cfg.Close()
 		return
 	}
 	defer tx.Rollback()
 
 	//Run each update query.
-	c.debugPrintln("sqldb.UpdateSchema...")
-	for _, q := range c.UpdateQueries {
+	cfg.debugPrintln("sqldb.UpdateSchema", "Running UpdateQueries...")
+	for _, q := range cfg.UpdateQueries {
 		//Log out some info about the query being run for diagnostics.
 		const trimLength = 80 //arbitrary number, longer shows more info but can clog up terminal output.
 		if len(q) > trimLength {
-			c.debugPrintln(strings.TrimSpace(q[:trimLength]) + "...")
+			cfg.debugPrintln(strings.TrimSpace(q[:trimLength]) + "...")
 		} else {
-			c.debugPrintln(q)
+			cfg.debugPrintln(q)
 		}
 
 		//Execute the query. Always log on error so users can identify query that has
-		//an error.
+		//an error. Connection always gets closed since an error occured.
 		_, innerErr := tx.ExecContext(ctx, q)
-		if innerErr != nil && !c.ignoreUpdateSchemaErrors(q, innerErr) {
-			log.Println("sqldb.UpdateSchema() error with query", q, innerErr)
-			c.Close()
+		if innerErr != nil && !cfg.ignoreUpdateSchemaErrors(q, innerErr) {
+			err = innerErr
+			log.Println("sqldb.UpdateSchema()", "Error with query.", q, innerErr)
+			cfg.Close()
+			return
+		}
+	}
+	cfg.debugPrintln("sqldb.UpdateSchema", "Runnign UpdateQueries...done")
+
+	//Run each update func.
+	cfg.debugPrintln("sqldb.UpdateSchema", "Runnign UpdateFuncs...")
+	for _, f := range cfg.UpdateFuncs {
+		//Get function name for diagnostics.
+		rawNameWithPath := runtime.FuncForPC(reflect.ValueOf(f).Pointer()).Name()
+		funcName := path.Base(rawNameWithPath)
+
+		//Log out some info about the func being run for diagnostics.
+		cfg.debugPrintln(funcName)
+
+		//Execute the func. Always log on error so users can identify func that has
+		//an error. Connection always gets closed since an error occured.
+		innerErr := f(tx)
+		if innerErr != nil {
+			err = innerErr
+			log.Println("sqldb.UpdateSchema()", "Error with func.", funcName)
+			cfg.Close()
 			return innerErr
 		}
 	}
-	c.debugPrintln("sqldb.UpdateSchema...done")
+	cfg.debugPrintln("sqldb.UpdateSchema", "Running UpdateFuncs...done")
 
-	//Commit transaction now that all UpdateQueries have been run successfully..
+	//Commit transaction now that all UpdateQueries have been run successfully.
 	err = tx.Commit()
 	if err != nil {
-		c.Close()
+		cfg.Close()
 		return
 	}
 
 	if ops.CloseConnection {
-		//close is handeld by defer above.
-		c.debugPrintln("Connection closed upon successful deploy.")
+		//Close() is handled by defer above.
+		cfg.debugPrintln("sqldb.UpdateSchame", "Connection closed after success.")
 	} else {
-		c.debugPrintln("Connection left open after successful deploy.")
+		cfg.debugPrintln("sqldb.UpdateSchame", "Connection left open after success.")
 	}
 
 	return

@@ -10,10 +10,16 @@ import (
 	"github.com/jmoiron/sqlx"
 )
 
-//DeployFunc is the format for a function used to deploy part of the schema.
-type DeployFunc func(*sqlx.DB) error
-
 //DeploySchemaOptions provides options when deploying a schema.
+//
+//SkipInsert is used prevent any DeployQueries with "INSERT INTO" statements from
+//running. This is used to deploy a completely empty database and is useful for
+//migrating data or backups.
+//
+//CloseConnection determines if the database connection should be closed after this
+//func successfully completes. This was added to support SQLite in-memory databases
+//since each connection to an im-memory db uses a new database, so if we deploy with
+//a connection we need to reuse it to run queries.
 type DeploySchemaOptions struct {
 	SkipInsert      bool
 	CloseConnection bool
@@ -28,24 +34,15 @@ type DeploySchemaOptions struct {
 //TABLE IF NOT EXISTS), you should still not call this func each time your app starts
 //or otherwise. Typically you would check if the database already exists or use a
 //flag, such as --deploy-db, to run this func.
-//
-//skipInsert is used prevent any DeployQueries with "INSERT INTO" statements from
-//running. This is used to deploy a completely empty database and is useful for
-//migrating data or backups.
-//
-//closeConnection determines if the database connection should be closed after  this
-//func successfully completes. This was added to support SQLite in-memory databases
-//since each connection to an im-memory db uses a new database, so if we deploy with
-//a connection we need to reuse it to run queries.
-func (c *Config) DeploySchemaWithOps(ops DeploySchemaOptions) (err error) {
+func (cfg *Config) DeploySchemaWithOps(ops DeploySchemaOptions) (err error) {
 	//Make sure a connection isn't already established to prevent overwriting anything.
 	//This forces users to call Close() first to prevent any incorrect db usage.
-	if c.Connected() {
+	if cfg.Connected() {
 		return ErrConnected
 	}
 
 	//Make sure the config is valid.
-	err = c.validate()
+	err = cfg.validate()
 	if err != nil {
 		return
 	}
@@ -53,16 +50,16 @@ func (c *Config) DeploySchemaWithOps(ops DeploySchemaOptions) (err error) {
 	//Get the connection string used to connect to the database. The returned string
 	//will not included the db name (for non-sqlite dbs) since the db isn't deployed
 	//yet.
-	connString := c.buildConnectionString(true)
+	connString := cfg.buildConnectionString(true)
 
-	//Get the correct driver based on the database type.
-	//Error should never occur this since we already validated the config in validate().
-	driver, err := getDriver(c.Type)
+	//Get the correct driver based on the database type. Error should never occur
+	//since we already validated the config in validate().
+	driver, err := getDriver(cfg.Type)
 	if err != nil {
 		return
 	}
 
-	//Connect to the database (really just the database server, or file for sqlite,
+	//Connect to the database (really just the database server, or file for SQLite,
 	//since the specific database itself is not created yet).
 	conn, err := sqlx.Open(driver, connString)
 	if err != nil {
@@ -73,9 +70,9 @@ func (c *Config) DeploySchemaWithOps(ops DeploySchemaOptions) (err error) {
 	//Create the database.
 	//For mariadb/mysql, we need to create the actual database on the server.
 	//For SQLite , we need to Ping() the connection so the file is created on disk.
-	switch c.Type {
+	switch cfg.Type {
 	case DBTypeMySQL, DBTypeMariaDB:
-		q := `CREATE DATABASE IF NOT EXISTS ` + c.Name
+		q := `CREATE DATABASE IF NOT EXISTS ` + cfg.Name
 		_, innerErr := conn.Exec(q)
 		if innerErr != nil {
 			err = innerErr
@@ -97,22 +94,27 @@ func (c *Config) DeploySchemaWithOps(ops DeploySchemaOptions) (err error) {
 		return
 	}
 
-	err = c.Connect()
+	err = cfg.Connect()
 	if err != nil {
 		return
 	}
 
+	//Skip closing the connection if user wants to leave connection open. This is
+	//mostly used for SQLite in-memory dbs since each time the connection is closed
+	//and reopenned, a new db is connected to.
 	if ops.CloseConnection {
-		defer c.Close()
+		defer cfg.Close()
 	}
 
+	//Get connection to use for deploying.
+	connection := cfg.Connection()
+
 	//Run each deploy query.
-	c.debugPrintln("sqldb.DeploySchema (DeployQueries)...")
-	connection := c.Connection()
-	for _, q := range c.DeployQueries {
+	cfg.debugPrintln("sqldb.DeploySchema", "Running DeployQueries...")
+	for _, q := range cfg.DeployQueries {
 		//Translate the query if needed. This will only translate queries with
 		//CREATE TABLE in the text.
-		q = c.translateCreateTable(q)
+		q = cfg.runTranslateDeployCreateTableFuncs(q)
 
 		//Skip queries that insert data if needed.
 		if strings.Contains(strings.ToUpper(q), "INSERT INTO") && ops.SkipInsert {
@@ -122,50 +124,50 @@ func (c *Config) DeploySchemaWithOps(ops DeploySchemaOptions) (err error) {
 		//Log out some info about the query being run for diagnostics.
 		if strings.Contains(q, "CREATE TABLE") {
 			idx := strings.Index(q, "(")
-			c.debugPrintln(strings.TrimSpace(q[:idx]) + "...")
+			cfg.debugPrintln(strings.TrimSpace(q[:idx]) + "...")
 		} else {
-			c.debugPrintln(q)
+			cfg.debugPrintln(q)
 		}
 
 		//Execute the query. Always log on error so users can identify query that has
-		//an error.
+		//an error. Connection always gets closed since an error occured.
 		_, innerErr := connection.Exec(q)
 		if innerErr != nil {
 			err = innerErr
-			log.Println("sqldb.DeploySchema() error with query", q)
-			c.Close()
+			log.Println("sqldb.DeploySchema()", "Error with query.", q)
+			cfg.Close()
 			return
 		}
 	}
-	c.debugPrintln("sqldb.DeploySchema (DeployQueries)...done")
+	cfg.debugPrintln("sqldb.DeploySchema", "Running DeployQueries...done")
 
 	//Run each deploy func.
-	c.debugPrintln("sqldb.DeploySchema (DeployFuncs)...")
-	for _, f := range c.DeployFuncs {
+	cfg.debugPrintln("sqldb.DeploySchema", "Running DeployFuncs...")
+	for _, f := range cfg.DeployFuncs {
 		//Get function name for diagnostics.
 		rawNameWithPath := runtime.FuncForPC(reflect.ValueOf(f).Pointer()).Name()
 		funcName := path.Base(rawNameWithPath)
 
-		//Log out some infor about the func being run for diagnostics.
-		c.debugPrintln(funcName)
+		//Log out some info about the func being run for diagnostics.
+		cfg.debugPrintln(funcName)
 
-		//Execute the func. Always log on error so users can identify query that has
-		//an error.
-		innerErr := f()
+		//Execute the func. Always log on error so users can identify func that has
+		//an error. Connection always gets closed since an error occured.
+		innerErr := f(connection)
 		if innerErr != nil {
-			log.Println("sqldb.DeploySchema() error with deploy func", funcName)
-			c.Close()
+			err = innerErr
+			log.Println("sqldb.DeploySchema()", "Error with func.", funcName)
+			cfg.Close()
 			return innerErr
 		}
-
 	}
-	c.debugPrintln("sqldb.DeploySchema (DeployFuncs)...done")
+	cfg.debugPrintln("sqldb.DeploySchema", "Running DeployFuncs...done")
 
 	if ops.CloseConnection {
-		//close is handled by defer above.
-		c.debugPrintln("Connection closed upon successful deploy.")
+		//Close() is handled by defer above.
+		cfg.debugPrintln("sqldb.DeploySchema()", "Connection closed after success.")
 	} else {
-		c.debugPrintln("Connection left open after successful deploy.")
+		cfg.debugPrintln("sqldb.DeploySchema()", "Connection left open after success.")
 	}
 
 	return
@@ -176,19 +178,17 @@ func DeploySchemaWithOps(ops DeploySchemaOptions) (err error) {
 	return config.DeploySchemaWithOps(ops)
 }
 
-//DeploySchema runs DeploySchemaWithOps with some defaults set. This was implemented
-//to support legacy compatibility while expanding the feature set with deploy options.
-func (c *Config) DeploySchema(skipInsert bool) (err error) {
+//DeploySchema runs DeploySchemaWithOps with some defaults set.
+func (cfg *Config) DeploySchema(skipInsert bool) (err error) {
 	ops := DeploySchemaOptions{
 		SkipInsert:      skipInsert,
-		CloseConnection: true, //legacy
+		CloseConnection: true,
 	}
-	return c.DeploySchemaWithOps(ops)
+	return cfg.DeploySchemaWithOps(ops)
 }
 
 //DeploySchema runs DeploySchemaWithOps with some defaults set for the default package
-//level config. This was implemented to support legacy compatibility while expanding
-//the feature set with deploy options.
+//level config.
 func DeploySchema(skipInsert bool) (err error) {
 	return config.DeploySchema(skipInsert)
 }
