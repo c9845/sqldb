@@ -124,12 +124,24 @@ func buildPragmaString(pragmas []string) (filenamePragmaString string) {
 			if !found {
 				continue
 			}
+
+			//trim
+			key = strings.TrimSpace(key)
+			value = strings.TrimSpace(value)
+
+			//add
 			key = "_" + key
 			v.Add(key, value)
 		case sqliteLibraryModernc:
 			//ex: _pragma=busy_timeout=5000
 			key := "_pragma"
 			value := p
+
+			//trim
+			value = strings.TrimSpace(value)
+			value = strings.Replace(value, " ", "", -1)
+
+			//add
 			v.Add(key, value)
 		default:
 			//this can never happen since we hardcode libraries.

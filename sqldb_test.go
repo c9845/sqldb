@@ -1,6 +1,7 @@
 package sqldb
 
 import (
+	"net/url"
 	"strconv"
 	"strings"
 	"testing"
@@ -323,6 +324,33 @@ func TestConnect(t *testing.T) {
 	err = c.Connect()
 	if err == nil {
 		t.Fatal("Error about bad db type should have occured.")
+		return
+	}
+
+	//Test with a good config and pragma set, check pragmas are set.
+	c.Close()
+	c = NewSQLiteConfig(InMemoryFilePathRacy)
+	c.SQLitePragmas = []string{
+		"PRAGMA busy_timeout = 5000",
+		//cannot set journal mode to WAL with in-memory db. journal mode is memory.
+	}
+
+	err = c.Connect()
+	if err != nil {
+		t.Fatal(err)
+		return
+	}
+	defer c.Close()
+
+	var busyTimeout string
+	q := "PRAGMA busy_timeout"
+	err = c.Connection().Get(&busyTimeout, q)
+	if err != nil {
+		t.Fatal(err)
+		return
+	}
+	if strings.ToLower(busyTimeout) != strings.ToLower("5000") {
+		t.Fatal("PRAGMA busy_timeout not set correctly.", busyTimeout)
 		return
 	}
 }
@@ -929,5 +957,54 @@ func TestString(t *testing.T) {
 	if w.String() != s {
 		t.Fatal("Mismatch", w.String(), s)
 		return
+	}
+}
+
+func TestBuildPragmaString(t *testing.T) {
+	p := []string{
+		"PRAGMA journal_mode = WAL",
+		"PRAGMA busy_timeout = 5000",
+	}
+
+	built := buildPragmaString(p)
+
+	u, err := url.ParseQuery(built)
+	if err != nil {
+		t.Fatal(err)
+		return
+	}
+	if len(u) != 2 {
+		t.Fatal("PRAGMAs not built correctly", len(u))
+		return
+	}
+
+	switch GetSQLiteLibrary() {
+	case sqliteLibraryMattn:
+		shouldBe := "_journal_mode=wal&_busy_timeout=5000"
+		parsed, err := url.ParseQuery(shouldBe)
+		if err != nil {
+			t.Fatal(err)
+			return
+		}
+
+		enc := "?" + parsed.Encode()
+		if built != enc {
+			t.Fatal("Incorrect PRAGMAs for connection string.", built, enc)
+			return
+		}
+
+	case sqliteLibraryModernc:
+		shouldBe := "_pragma=journal_mode=wal&_pragma=busy_timeout=5000"
+		parsed, err := url.ParseQuery(shouldBe)
+		if err != nil {
+			t.Fatal(err)
+			return
+		}
+
+		enc := "?" + parsed.Encode()
+		if built != enc {
+			t.Fatal("Incorrect PRAGMAs for connection string.", built, enc)
+			return
+		}
 	}
 }
