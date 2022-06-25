@@ -411,8 +411,8 @@ func (cfg *Config) buildConnectionString(deployingDB bool) (connString string) {
 			pragmasToAdd := buildPragmaString(cfg.SQLitePragmas)
 			connString += pragmasToAdd
 
-			cfg.debugPrintln("PRAGMA String", pragmasToAdd)
-			cfg.debugPrintln("Path With PRAGMAS", connString)
+			cfg.debugPrintln("sqldb.buildConnectionString", "PRAGMA String:", pragmasToAdd)
+			// cfg.debugPrintln("sqldb.buildConnectionString", "Path With PRAGMAS:", connString)
 		}
 
 	default:
