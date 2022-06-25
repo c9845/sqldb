@@ -510,6 +510,7 @@ func (cfg *Config) Connect() (err error) {
 		cfg.debugPrintln("sqldb.Connect", "Connecting to database "+cfg.Name+" on "+cfg.Host+" with user "+cfg.User)
 	case DBTypeSQLite:
 		cfg.debugPrintln("sqldb.Connect", "Connecting to database "+cfg.SQLitePath+".")
+		cfg.debugPrintln("sqldb.Connect", "Using SQLite Library "+GetSQLiteLibrary()+".")
 	}
 
 	return
