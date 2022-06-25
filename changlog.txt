@@ -1,3 +1,14 @@
+v2.1.0
+----------
+- Support for UpdateFuncs. 
+    - Similar to DeployFuncs but for updating the schema.
+    - Allows for more advanced schema updates that simple UpdateQueries wouldn't allow for.
+- Improved and expaneded tests.
+- Improved handling of SQLite PRAGMAs.
+    - Append PRAGMAs to connection string (path to SQLite file) based on SQLite library used.
+    - This allows for reliably setting busy_timeout, journal_mode, etc.
+    - Works for mattn and modernc libraries even though each has a different PRAGMA format.
+
 v1.4.0
 ----------
 - Allow setting any SQLite PRAGMAs after connecting to db.

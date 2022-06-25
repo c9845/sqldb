@@ -8,11 +8,14 @@ import "strings"
 //
 //Ex:
 //cols := Columns{
-//	"users.Fname",
-//	"users.Birthday",
-//  "users.CompanyID",
-//  "company.Name AS CompanyName",
+//	"Fname",
+//	"Birthday",
+//  "CompanyID",
 //}
+//colString, valString, _ := cols.ForInsert
+// //colString will be "Fname,Birthday,CompanyID"
+// //valString will be "?,?,?"
+//Use like: "INSERT INTO users (" + colString + ") VALUES (" + valString + ")"
 type Columns []string
 
 //Bindvars holds the parameters you want to use in a query. This helps in organizing
