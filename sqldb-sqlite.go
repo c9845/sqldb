@@ -17,6 +17,9 @@ const (
 	//InMemoryFilePathRacy is the "path" to provide for the SQLite file when you want
 	//to use an in-memory database instead of a filesystem file database. This is racy
 	//because each "Connect" call to :memory: will open a brand new database.
+	//
+	//This is good for running tests since then each test runs with a separate
+	//in-memory db.
 	InMemoryFilePathRacy = ":memory:"
 
 	//InMemoryFilePathRaceSafe is the "path" to provide for the SQLite file when you

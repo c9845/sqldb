@@ -4,7 +4,22 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/jmoiron/sqlx"
 )
+
+func TestValid(t *testing.T) {
+	if err := DBTypeMySQL.valid(); err != nil {
+		t.Fatal("DBTypeMySQL is valid, error should not have occured.", err)
+		return
+	}
+
+	bad := DBType("bad")
+	if err := bad.valid(); err == nil {
+		t.Fatal("bad DBType is not valid but no error was returned")
+		return
+	}
+}
 
 func TestNewConfig(t *testing.T) {
 	c, err := NewConfig(DBTypeMariaDB)
@@ -109,7 +124,6 @@ func TestNewMariaDBConfig(t *testing.T) {
 }
 
 func TestValidate(t *testing.T) {
-	//Test Start>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 	//Test MariaDB/MySQL with missing stuff.
 	c, err := NewConfig(DBTypeMariaDB)
 	if err != nil {
@@ -156,9 +170,7 @@ func TestValidate(t *testing.T) {
 		t.Fatal("Unexpected error", err)
 		return
 	}
-	//Test End<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
 
-	//Test Start>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 	//Test for SQLite.
 	c, err = NewConfig(DBTypeSQLite)
 	if err != nil {
@@ -178,9 +190,6 @@ func TestValidate(t *testing.T) {
 		return
 	}
 
-	//Test End<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
-
-	//Test Start>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 	//Bad db type, which should never occur.
 	c, err = NewConfig(DBTypeMySQL)
 	if err != nil {
@@ -194,65 +203,54 @@ func TestValidate(t *testing.T) {
 		t.Fatal("Error about bad db type should have occured in validate.")
 		return
 	}
-	//Test End<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
 }
 
 func TestBuildConnectionString(t *testing.T) {
-	//Test Start>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 	//For deploying mysql/mariadb.
-	c, err := NewConfig(DBTypeMySQL)
-	if err != nil {
-		t.Fatal(err)
-		return
-	}
-	c.Host = "10.0.0.1"
-	c.Port = 3306
-	c.User = "user"
-	c.Password = "password"
-
+	c := NewMariaDBConfig("10.0.01", uint(3306), "", "user", "password")
 	connString := c.buildConnectionString(true)
 	manuallyBuilt := c.User + ":" + c.Password + "@tcp(" + c.Host + ":" + strconv.FormatUint(uint64(c.Port), 10) + ")/"
 	if connString != manuallyBuilt {
-		t.Fatal("Conn string not built correctly", connString, manuallyBuilt)
+		t.Fatal("Connection string not built correctly.", connString, manuallyBuilt)
 		return
 	}
-	//Test End<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
 
-	//Test Start>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
-	//For existing mysql/mariadb.
-	c, err = NewConfig(DBTypeMySQL)
-	if err != nil {
-		t.Fatal(err)
-		return
-	}
-	c.Host = "10.0.0.1"
-	c.Port = 3306
-	c.User = "user"
-	c.Password = "password"
-	c.Name = "database"
-
+	//For connecting to already deployted mysql/mariadb.
+	c = NewMariaDBConfig("10.0.01", uint(3306), "db-name", "user", "password")
 	connString = c.buildConnectionString(false)
 	manuallyBuilt = c.User + ":" + c.Password + "@tcp(" + c.Host + ":" + strconv.FormatUint(uint64(c.Port), 10) + ")/" + c.Name
 	if connString != manuallyBuilt {
-		t.Fatal("Conn string not built correctly", connString, manuallyBuilt)
+		t.Fatal("Connection string not built correctly.", connString, manuallyBuilt)
 		return
 	}
-	//Test End<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
 
-	//Test Start>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
-	//For SQLite.
-	c, err = NewConfig(DBTypeSQLite)
-	if err != nil {
-		t.Fatal(err)
+	//For deploying SQLite.
+	c = NewSQLiteConfig("/path/to/sqlite.db")
+	connString = c.buildConnectionString(true)
+	if connString != c.SQLitePath {
+		t.Fatal("Connection string for SQLite should just be the path but wasn't.", connString)
 		return
 	}
-	c.SQLitePath = "/path/to/sqlite.db"
+
+	//For connecting to already deployed SQLite.
+	c = NewSQLiteConfig("/path/to/sqlite.db")
 	connString = c.buildConnectionString(false)
 	if connString != c.SQLitePath {
-		t.Fatal("Conn string for SQLite should just be the path but wasn't")
+		t.Fatal("Connection string for SQLite should just be the path but wasn't.", connString)
 		return
 	}
-	//Test End<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+
+	//Test SQLite with additional PRAGMAs
+	c.SQLitePragmas = []string{"PRAGMA busy_timeout = 5000"}
+	connString = c.buildConnectionString(false)
+	if !strings.Contains(connString, c.SQLitePath) {
+		t.Fatal("Connection string for SQLite should include the path but didn't.", connString)
+		return
+	}
+	if !strings.Contains(connString, "busy_timeout") {
+		t.Fatal("PRAGMAs not added to connection string as expected.", connString)
+		return
+	}
 }
 
 func TestGetDriver(t *testing.T) {
@@ -279,6 +277,52 @@ func TestGetDriver(t *testing.T) {
 	_, err = getDriver("bad")
 	if err == nil {
 		t.Fatal("error about bad db type should have been returned")
+		return
+	}
+}
+
+func TestConnect(t *testing.T) {
+	//Test with sqlite.
+	//No test with mariadb/mysql b/c we probably don't have a db server accessible.
+	c := NewSQLiteConfig(InMemoryFilePathRacy)
+	if c == nil {
+		t.Fatal("No config returned")
+		return
+	}
+	if c.Type != DBTypeSQLite {
+		t.Fatal("Config doesn't match")
+		return
+	}
+
+	err := c.Connect()
+	if err != nil {
+		t.Fatal(err)
+		return
+	}
+	defer c.Close()
+
+	//Try connecting again which should fail.
+	err = c.Connect()
+	if err != ErrConnected {
+		t.Fatal("Error about connecting to an already connected database should have occured.")
+		return
+	}
+
+	//Test with a bad config.
+	c.Close()
+	c.SQLitePath = ""
+	err = c.Connect()
+	if err == nil {
+		t.Fatal("Error about bad config should have occured.")
+		return
+	}
+
+	//Test with a bad db type.
+	c.Type = DBType("bad")
+	c.SQLitePath = InMemoryFilePathRacy
+	err = c.Connect()
+	if err == nil {
+		t.Fatal("Error about bad db type should have occured.")
 		return
 	}
 }
@@ -386,30 +430,6 @@ func TestDefaults(t *testing.T) {
 		t.Fatal("MapperFunc not set correctly")
 		return
 	}
-}
-
-func TestConnect(t *testing.T) {
-	//Test with sqlite.
-	//No test with mariadb/mysql b/c we probably don't have a db server accessible.
-	c := NewSQLiteConfig(InMemoryFilePathRacy)
-	if c == nil {
-		t.Fatal("No config returned")
-		return
-	}
-	if c.Type != DBTypeSQLite {
-		t.Fatal("Config doesn't match")
-		return
-	}
-
-	err := c.Connect()
-	if err != nil {
-		t.Fatal(err)
-		return
-	}
-	defer c.Close()
-
-	//Test setting some pragmas.
-	//TODO
 }
 
 func TestClose(t *testing.T) {
@@ -537,6 +557,13 @@ func TestDeploySchema(t *testing.T) {
 	`
 	c.DeployQueries = []string{createTable}
 
+	insertInitial := func(c *sqlx.DB) error {
+		q := "INSERT INTO users (Username) VALUES (?)"
+		_, err := c.Exec(q, "initialuser@example.com")
+		return err
+	}
+	c.DeployFuncs = []DeployFunc{insertInitial}
+
 	err := c.DeploySchemaWithOps(DeploySchemaOptions{false, false})
 	if err != nil {
 		t.Fatal(err)
@@ -551,8 +578,54 @@ func TestDeploySchema(t *testing.T) {
 		return
 	}
 
+	//Make sure results were inserted (DeployFunc and extra query).
+	q := "SELECT Count(ID) FROM Users"
+	var count int64
+	err = c.Connection().Get(&count, q)
+	if err != nil {
+		t.Fatal("Could not query.")
+		return
+	} else if count != 2 {
+		t.Fatal("Data not inserted correctly.", count)
+		return
+	}
+
+	//Try deploying to an already connected to db. This should fail.
+	err = c.DeploySchemaWithOps(DeploySchemaOptions{false, false})
+	if err != ErrConnected {
+		t.Fatal("Error about db already connected should have occured.")
+		return
+	}
+
 	//Close connection
 	c.Close()
+
+	//Try deploying with an invalid config.
+	c.SQLitePath = ""
+	err = c.DeploySchemaWithOps(DeploySchemaOptions{false, false})
+	if err == nil {
+		t.Fatal("Error about invalid config should have occured.")
+		return
+	}
+
+	//Try deploying with a bad deploy func.
+	c.SQLitePath = InMemoryFilePathRacy
+	insertInitial = func(c *sqlx.DB) error {
+		q := "SELECT INTO users VALUES (?)"
+		_, err := c.Exec(q, "initialuser@example.com")
+		return err
+	}
+	c.DeployFuncs = []DeployFunc{insertInitial}
+
+	err = c.DeploySchemaWithOps(DeploySchemaOptions{false, false})
+	if err == nil {
+		t.Fatal("Error should have occured because of bad deploy func.")
+		return
+	}
+	if c.Connected() {
+		t.Fatal("Connection should be closed after deploy func error.")
+		return
+	}
 }
 
 func TestDeploySchemaAndClose(t *testing.T) {
@@ -615,13 +688,20 @@ func TestUpdateSchema(t *testing.T) {
 	updateTable := `ALTER TABLE users ADD COLUMN FirstName TEXT`
 	c.UpdateQueries = []string{updateTable}
 
+	uf := func(tx *sqlx.Tx) error {
+		q := "ALTER TABLE users ADD COLUMN LastName TEXT"
+		_, err := tx.Exec(q)
+		return err
+	}
+	c.UpdateFuncs = []UpdateFunc{uf}
+
 	err = c.UpdateSchemaWithOps(UpdateSchemaOptions{false})
 	if err != nil {
 		t.Fatal(err)
 		return
 	}
 
-	//Insert into new column to make sure it was created.
+	//Insert into new columns to make sure they were created.
 	insert := `INSERT INTO users (Username, FirstName) VALUES (?, ?)`
 	_, err = c.connection.Exec(insert, "username@example.com", "john")
 	if err != nil {
@@ -629,21 +709,42 @@ func TestUpdateSchema(t *testing.T) {
 		return
 	}
 
-	//Close connection
-	c.Close()
-}
+	insert = `INSERT INTO users (Username, FirstName, LastName) VALUES (?, ?, ?)`
+	_, err = c.connection.Exec(insert, "username@example.com", "john", "doe")
+	if err != nil {
+		t.Fatal(err)
+		return
+	}
 
-func TestUpdateSchemaAndClose(t *testing.T) {
-	//Test with sqlite in-memory db.
-	//No test with mariadb/mysql b/c we probably don't have a db server accessible.
-	c := NewSQLiteConfig(InMemoryFilePathRacy)
+	//Try updating with an invalid config.
+	c.SQLitePath = ""
+	err = c.UpdateSchemaWithOps(UpdateSchemaOptions{false})
+	if err == nil {
+		t.Fatal("Error about invalid config should have occured.")
+		return
+	}
+
+	//Try updating a db that is not already connected.
+	//Note error checking b/c db has not been deployed. If we deploy and close the
+	//db connection, the in-memory db is gone, therefore we just with a blank db and
+	//the table does not exist yet.
+	c.Close()
+	c.SQLitePath = InMemoryFilePathRacy
+	err = c.UpdateSchemaWithOps(UpdateSchemaOptions{false})
+	if err != nil && !strings.Contains(err.Error(), "no such table") {
+		t.Fatal(err)
+		return
+	}
+
+	//Test with a bad update func.
+	c.Close()
+	c = NewSQLiteConfig(InMemoryFilePathRacy)
 	if c == nil {
 		t.Fatal("No config returned")
 		return
 	}
 
-	//Need to deploy schema first.
-	createTable := `
+	createTable = `
 		CREATE TABLE IF NOT EXISTS users (
 			ID INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
 			Username TEXT NOT NULL
@@ -651,24 +752,182 @@ func TestUpdateSchemaAndClose(t *testing.T) {
 	`
 	c.DeployQueries = []string{createTable}
 
-	err := c.DeploySchemaWithOps(DeploySchemaOptions{false, false})
+	err = c.DeploySchemaWithOps(DeploySchemaOptions{false, false})
 	if err != nil {
 		t.Fatal(err)
 		return
 	}
 
-	//Update
-	updateTable := `ALTER TABLE users ADD COLUMN FirstName TEXT`
-	c.UpdateQueries = []string{updateTable}
+	uf = func(tx *sqlx.Tx) error {
+		q := "ALTER ELBAT dynamite ADD COLUMN LastName TEXT"
+		_, err := tx.Exec(q)
+		return err
+	}
+	c.UpdateFuncs = []UpdateFunc{uf}
 
-	err = c.UpdateSchema()
-	if err != nil {
-		t.Fatal(err)
+	err = c.UpdateSchemaWithOps(UpdateSchemaOptions{false})
+	if err == nil {
+		t.Fatal("Error about bad update func should have occured.")
 		return
 	}
-
-	//Make sure connection is closed.
 	if c.Connected() {
-		t.Fatal("Connection should be closed")
+		t.Fatal("Connection should be closed after bad update func.")
+		return
+	}
+}
+
+func TestGetSQLiteVersion(t *testing.T) {
+	v, err := GetSQLiteVersion()
+	if err != nil {
+		t.Fatal(err)
+		return
+	}
+	if v == "" {
+		t.Fatal("SQLite version not returned.", v)
+		return
+	}
+}
+
+func TestBuildColumnString(t *testing.T) {
+	//Good state for inserting.
+	c := Columns{
+		"ID",
+		"Fname",
+		"Bday",
+	}
+	colString, valString, err := c.buildColumnString(false)
+	if err != nil {
+		t.Fatal(err)
+		return
+	}
+	if colString != "ID,Fname,Bday" {
+		t.Fatal("colString not build right", colString)
+		return
+	}
+	if valString != "?,?,?" {
+		t.Fatal("valString not build right", valString)
+		return
+	}
+
+	//Good state for updating.
+	colString, valString, err = c.buildColumnString(true)
+	if err != nil {
+		t.Fatal(err)
+		return
+	}
+	if colString != "ID=?,Fname=?,Bday=?" {
+		t.Fatal("colString not build right", colString)
+		return
+	}
+	if valString != "" {
+		t.Fatal("valString should be blank", valString)
+		return
+	}
+
+	//Provide extra comma in column.
+	c = append(c, "Lname,")
+	colString, _, err = c.buildColumnString(false)
+	if err != ErrExtraCommaInColumnString {
+		t.Fatal("Error about double comma should have occured.", colString)
+		return
+	}
+
+	//Test with no columns
+	c = Columns{}
+	_, _, err = c.buildColumnString(false)
+	if err != ErrNoColumnsGiven {
+		t.Fatal("Error about no columns should have occured.")
+		return
+	}
+}
+
+func TestForSelect(t *testing.T) {
+	//Good test.
+	c := Columns{
+		"ID",
+		"Fname",
+		"Bday",
+	}
+	colString, err := c.ForSelect()
+	if err != nil {
+		t.Fatal(err)
+		return
+	}
+	if colString != "ID,Fname,Bday" {
+		t.Fatal("colString not build right", colString)
+		return
+	}
+
+	//No columns bad test.
+	c = Columns{}
+	_, err = c.ForSelect()
+	if err != ErrNoColumnsGiven {
+		t.Fatal("Error about no columns should have occured.")
+		return
+	}
+}
+
+func TestForInsert(t *testing.T) {
+	//Good test.
+	c := Columns{
+		"ID",
+		"Fname",
+		"Bday",
+	}
+	colString, valString, err := c.ForInsert()
+	if err != nil {
+		t.Fatal(err)
+		return
+	}
+	if colString != "ID,Fname,Bday" {
+		t.Fatal("colString not build right", colString)
+		return
+	}
+	if valString != "?,?,?" {
+		t.Fatal("valString not build right", valString)
+		return
+	}
+
+	//No columns bad test.
+	c = Columns{}
+	_, _, err = c.ForInsert()
+	if err != ErrNoColumnsGiven {
+		t.Fatal("Error about no columns should have occured.")
+		return
+	}
+}
+
+func TestForUpdate(t *testing.T) {
+	//Good test.
+	c := Columns{
+		"ID",
+		"Fname",
+		"Bday",
+	}
+	colString, err := c.ForUpdate()
+	if err != nil {
+		t.Fatal(err)
+		return
+	}
+	if colString != "ID=?,Fname=?,Bday=?" {
+		t.Fatal("colString not build right", colString)
+		return
+	}
+
+	//No columns bad test.
+	c = Columns{}
+	_, err = c.ForUpdate()
+	if err != ErrNoColumnsGiven {
+		t.Fatal("Error about no columns should have occured.")
+		return
+	}
+}
+
+func TestString(t *testing.T) {
+	s := "hello"
+	w := Where(s)
+	if w.String() != s {
+		t.Fatal("Mismatch", w.String(), s)
+		return
 	}
 }

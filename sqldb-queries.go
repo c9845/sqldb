@@ -29,6 +29,8 @@ type Bindvars []interface{}
 //VALUES clause in an INSERT query as needed. Using this func instead of building column
 //list manually ensures column list is formatted correctly and count of parameter
 //placeholders match the count of columns.
+//
+//Use ForSelect, ForUpdate, or ForInsert instead.
 func (cols Columns) buildColumnString(forUpdate bool) (colString, valString string, err error) {
 	//Make sure at least one column is provided.
 	if len(cols) == 0 {
@@ -56,10 +58,16 @@ func (cols Columns) buildColumnString(forUpdate bool) (colString, valString stri
 		valString = strings.TrimSuffix(valString, ",")
 	}
 
-	//Check for any double commas. This is usually caused by a column name being given
+	//Check for any extra commas. This is usually caused by a column name being given
 	//with a comma already appended or an empty column was provided.
-	if idx := strings.Index(colString, ",,"); idx != -1 {
-		err = ErrDoubleCommaInColumnString
+	doubleCommaIdx := strings.Index(colString, ",,")
+	hasTrailingComma := strings.HasSuffix(colString, ",")
+	if doubleCommaIdx != -1 || hasTrailingComma {
+		err = ErrExtraCommaInColumnString
+
+		//We could set colString equal to "" here but sending back colString is
+		//helpful for diagnosing where the double comma occured.
+
 		return
 	}
 

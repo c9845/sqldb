@@ -10,6 +10,11 @@ import (
 	"github.com/jmoiron/sqlx"
 )
 
+//DeployFunc is the format of a function used to deploy the database schema. The type
+//is defined for easier use when defining the list of DeployFuncs versus having to
+//type "cfg.DeployFuncs = []func(*sqlx.DB) error {...}".
+type DeployFunc func(*sqlx.DB) error
+
 //DeploySchemaOptions provides options when deploying a schema.
 //
 //SkipInsert is used prevent any DeployQueries with "INSERT INTO" statements from
@@ -54,10 +59,10 @@ func (cfg *Config) DeploySchemaWithOps(ops DeploySchemaOptions) (err error) {
 
 	//Get the correct driver based on the database type. Error should never occur
 	//since we already validated the config in validate().
-	driver, err := getDriver(cfg.Type)
-	if err != nil {
-		return
-	}
+	//
+	//We can ignore the error here since an invalid Type would have already been caught
+	//in .validate().
+	driver, _ := getDriver(cfg.Type)
 
 	//Connect to the database (really just the database server, or file for SQLite,
 	//since the specific database itself is not created yet).
@@ -124,7 +129,9 @@ func (cfg *Config) DeploySchemaWithOps(ops DeploySchemaOptions) (err error) {
 		//Log out some info about the query being run for diagnostics.
 		if strings.Contains(q, "CREATE TABLE") {
 			idx := strings.Index(q, "(")
-			cfg.debugPrintln(strings.TrimSpace(q[:idx]) + "...")
+			if idx > 0 {
+				cfg.debugPrintln(strings.TrimSpace(q[:idx]) + "...")
+			}
 		} else {
 			cfg.debugPrintln(q)
 		}

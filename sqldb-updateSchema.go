@@ -1,13 +1,19 @@
 package sqldb
 
 import (
-	"context"
 	"log"
 	"path"
 	"reflect"
 	"runtime"
 	"strings"
+
+	"github.com/jmoiron/sqlx"
 )
+
+//UpdateFunc is the format of a function used to update the database schema. The type
+//is defined for easier use when defining the list of UpdateFuncs versus having to
+//type "cfg.UpdateFuncs = []func(*sqlx.Tx) error {...}".
+type UpdateFunc func(*sqlx.Tx) error
 
 //UpdateSchemaOptions provides options when updating a schema.
 //
@@ -64,9 +70,8 @@ func (cfg *Config) UpdateSchemaWithOps(ops UpdateSchemaOptions) (err error) {
 	//Start a transaction. We use a transaction to update the schema so that either
 	//the entire database is updated successfully or none of the database is updated.
 	//This prevents the database from ending up in a half-updated state.
-	ctx := context.Background()
 	connection := cfg.Connection()
-	tx, err := connection.BeginTxx(ctx, nil)
+	tx, err := connection.Beginx()
 	if err != nil {
 		cfg.Close()
 		return
@@ -86,7 +91,7 @@ func (cfg *Config) UpdateSchemaWithOps(ops UpdateSchemaOptions) (err error) {
 
 		//Execute the query. Always log on error so users can identify query that has
 		//an error. Connection always gets closed since an error occured.
-		_, innerErr := tx.ExecContext(ctx, q)
+		_, innerErr := tx.Exec(q)
 		if innerErr != nil && !cfg.ignoreUpdateSchemaErrors(q, innerErr) {
 			err = innerErr
 			log.Println("sqldb.UpdateSchema()", "Error with query.", q, innerErr)

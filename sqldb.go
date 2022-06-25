@@ -165,7 +165,7 @@ type Config struct {
 	//complicated deployment queries than the queries provided in DeployQueries. These
 	//funcs get executed after all DeployQueries and should be used much more sparsely
 	//compared to DeployQueries. Each func should be safe to rerun multiple times!
-	DeployFuncs []func(*sqlx.DB) error
+	DeployFuncs []DeployFunc
 
 	//TranslateDeployCreateTableFuncs is a list of functions run against each
 	//DeployQuery that contains a CREATE TABLE clause that modifies the query to
@@ -188,7 +188,7 @@ type Config struct {
 	//These funcs get executed after all UpdateQueries and should be used much more
 	//sparsely compared to UpdateQueries. Each func should be safe to rerun multiple
 	//times!
-	UpdateFuncs []func(*sqlx.Tx) error
+	UpdateFuncs []UpdateFunc
 
 	//UpdateIgnoreErrorFuncs is a list of functions run when an UpdateQuery results in
 	//an error and determins if the error can be ignored. This is used to ignore errors
@@ -273,11 +273,11 @@ var (
 	//query but no columns were provided.
 	ErrNoColumnsGiven = errors.New("sqldb: no columns provided")
 
-	//ErrDoubleCommaInColumnString is returned when building a column string for a
-	//query but a double comma exists which would cause the query to not run correctly.
-	//Double commas are usually due to an empty column name being provided or a comma
+	//ErrExtraCommaInColumnString is returned when building a column string for a
+	//query but an extra comma exists which would cause the query to not run correctly.
+	//Extra commas are usually due to an empty column name being provided or a comma
 	//being added to the column name by mistake.
-	ErrDoubleCommaInColumnString = errors.New("sqldb: extra comma in column name")
+	ErrExtraCommaInColumnString = errors.New("sqldb: extra comma in column name")
 )
 
 //config is the package level saved config. This stores your config when you want to
@@ -462,10 +462,10 @@ func (cfg *Config) Connect() (err error) {
 	//Get the correct driver based on the database type. If using SQLite, the correct
 	//driver is chosen based on build tags. Error should never occur this since we
 	//already validated the config in validate().
-	driver, err := getDriver(cfg.Type)
-	if err != nil {
-		return
-	}
+	//
+	//We can ignore the error here since an invalid Type would have already been caught
+	//in .validate().
+	driver, _ := getDriver(cfg.Type)
 
 	//Connect to the database.
 	//For SQLite, check if the database file exists. This func will not create the
