@@ -1,6 +1,23 @@
 ## Introduction:
 Package sqldb provides tooling for establishing and managing a database connection, deploying and updating schemas, and running queries. This wraps the `sql` package to reduce some boilerplate while providing tools for schema and query management.
 
+## Install:
+Assuming you are using go modules the latest version can be installed with:
+
+`go get github.com/c9845/sqldb/v2`
+
+Then use in your code with:
+
+`import "github.com/c9845/sqldb/v2`
+
+And use via: 
+
+```
+sqldb.New...()
+sqldb.Connect()
+//...
+```
+
 ## Details:
 - Supports MySQL, MariaDB, and SQLite (with and without CGO). Additional database support should be relatively easy to add.
 - Define a database connection configuration and manage the connection pool for running queries.
