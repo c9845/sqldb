@@ -1,4 +1,4 @@
-module github.com/c9845/sqldb
+module github.com/c9845/sqldb/v2
 
 go 1.18
 
