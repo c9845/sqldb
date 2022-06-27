@@ -38,7 +38,7 @@ func TestNewConfig(t *testing.T) {
 	}
 
 	//test with bad db type
-	c, err = NewConfig("maybe")
+	_, err = NewConfig("maybe")
 	if err == nil {
 		t.Fatal("Error about invalid db type should have occured.")
 		return
@@ -60,7 +60,7 @@ func TestNewSQLiteConfig(t *testing.T) {
 
 func TestNewMySQLConfig(t *testing.T) {
 	host := "10.0.0.1"
-	port := uint(3306)
+	port := defaultMySQLPort
 	dbName := "n"
 	dbUser := "u"
 	dbPass := "p"
@@ -144,7 +144,7 @@ func TestValidate(t *testing.T) {
 		return
 	}
 
-	c.Port = 3306
+	c.Port = defaultMariaDBPort
 	err = c.validate()
 	if err != ErrNameNotProvided {
 		t.Fatal("ErrNameNotProvided should have occured but didnt")
@@ -208,7 +208,7 @@ func TestValidate(t *testing.T) {
 
 func TestBuildConnectionString(t *testing.T) {
 	//For deploying mysql/mariadb.
-	c := NewMariaDBConfig("10.0.01", uint(3306), "", "user", "password")
+	c := NewMariaDBConfig("10.0.01", defaultMariaDBPort, "", "user", "password")
 	connString := c.buildConnectionString(true)
 	manuallyBuilt := c.User + ":" + c.Password + "@tcp(" + c.Host + ":" + strconv.FormatUint(uint64(c.Port), 10) + ")/"
 	if connString != manuallyBuilt {
@@ -217,7 +217,7 @@ func TestBuildConnectionString(t *testing.T) {
 	}
 
 	//For connecting to already deployted mysql/mariadb.
-	c = NewMariaDBConfig("10.0.01", uint(3306), "db-name", "user", "password")
+	c = NewMariaDBConfig("10.0.01", defaultMariaDBPort, "db-name", "user", "password")
 	connString = c.buildConnectionString(false)
 	manuallyBuilt = c.User + ":" + c.Password + "@tcp(" + c.Host + ":" + strconv.FormatUint(uint64(c.Port), 10) + ")/" + c.Name
 	if connString != manuallyBuilt {
@@ -349,8 +349,9 @@ func TestConnect(t *testing.T) {
 		t.Fatal(err)
 		return
 	}
-	if strings.ToLower(busyTimeout) != strings.ToLower("5000") {
-		t.Fatal("PRAGMA busy_timeout not set correctly.", busyTimeout)
+	expectedBusyTimeout := "5000"
+	if busyTimeout != expectedBusyTimeout {
+		t.Fatal("PRAGMA busy_timeout not set correctly.", busyTimeout, expectedBusyTimeout)
 		return
 	}
 }

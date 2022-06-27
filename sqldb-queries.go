@@ -78,21 +78,21 @@ func (cols Columns) buildColumnString(forUpdate bool) (colString, valString stri
 }
 
 //ForSelect builds the column string for a SELECT query.
-func (c Columns) ForSelect() (colString string, err error) {
-	colString, _, err = c.buildColumnString(false)
+func (cols Columns) ForSelect() (colString string, err error) {
+	colString, _, err = cols.buildColumnString(false)
 	return
 }
 
 //ForInsert builds the column string for an INSERT query and also returns the
 //placholder VALUES() string you should use.
-func (c Columns) ForInsert() (colString, valString string, err error) {
-	colString, valString, err = c.buildColumnString(false)
+func (cols Columns) ForInsert() (colString, valString string, err error) {
+	colString, valString, err = cols.buildColumnString(false)
 	return
 }
 
 //ForUpdate builds the column string for an UPDATE query.
-func (c Columns) ForUpdate() (colString string, err error) {
-	colString, _, err = c.buildColumnString(true)
+func (cols Columns) ForUpdate() (colString string, err error) {
+	colString, _, err = cols.buildColumnString(true)
 	return
 }
 

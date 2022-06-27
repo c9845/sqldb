@@ -6,7 +6,7 @@ import (
 
 //runTranslateDeployCreateTableFuncs runs the list of TranslateDeployCreateTableFuncs
 //funcs defined on a query when Deploy() is called.
-func (c *Config) runTranslateDeployCreateTableFuncs(originalQuery string) (translatedQuery string) {
+func (cfg *Config) runTranslateDeployCreateTableFuncs(originalQuery string) (translatedQuery string) {
 	//Make sure query is a CREATE TABLE query.
 	if !strings.Contains(strings.ToUpper(originalQuery), "CREATE TABLE") {
 		return originalQuery
@@ -14,7 +14,7 @@ func (c *Config) runTranslateDeployCreateTableFuncs(originalQuery string) (trans
 
 	//Run each translate func. A query may be translated by multiple funcs.
 	workingQuery := originalQuery
-	for _, f := range c.TranslateDeployCreateTableFuncs {
+	for _, f := range cfg.TranslateDeployCreateTableFuncs {
 		workingQuery = f(workingQuery)
 	}
 
@@ -37,11 +37,20 @@ func TFMySQLToSQLiteReformatID(in string) (out string) {
 //KEY note is assigned as part of the column definition. We also have to remove the
 //comma preceeding this line too since a trailing comma creates a bad query!
 func TFMySQLToSQLiteRemovePrimaryKeyDefinition(in string) (out string) {
+	out = in
+
 	before := "PRIMARY KEY(ID)"
 	after := ""
-	out = strings.Replace(in, before, after, 1)
+	primaryKeyIndex := strings.Index(in, before)
+	if primaryKeyIndex == -1 {
+		return
+	}
 
-	out = strings.TrimSuffix(out, ",")
+	choppedQ := out[:primaryKeyIndex]
+	lastCommaIndex := strings.LastIndex(choppedQ, ",")
+	out = out[:lastCommaIndex] + out[lastCommaIndex+1:]
+	out = strings.Replace(out, before, after, 1)
+
 	return
 }
 

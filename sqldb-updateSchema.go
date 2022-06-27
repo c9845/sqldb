@@ -147,11 +147,11 @@ func UpdateSchemaWithOps(ops UpdateSchemaOptions) (err error) {
 
 //UpdateSchema runs UpdateSchemaWithOps with some defaults set. This was implemented
 //to support legacy compatibility while expanding the feature set with update options.
-func (c *Config) UpdateSchema() (err error) {
+func (cfg *Config) UpdateSchema() (err error) {
 	ops := UpdateSchemaOptions{
 		CloseConnection: true,
 	}
-	return c.UpdateSchemaWithOps(ops)
+	return cfg.UpdateSchemaWithOps(ops)
 }
 
 //UpdateSchema runs UpdateSchemaWithOps with some defaults set for the default package
@@ -169,7 +169,7 @@ func UpdateSchema() (err error) {
 //
 //The query to update the schema is passed in so that we can check what an error is in
 //relation to. Sometimes the error returned doesn't provide enough context.
-func (c *Config) ignoreUpdateSchemaErrors(query string, err error) bool {
+func (cfg *Config) ignoreUpdateSchemaErrors(query string, err error) bool {
 	//make sure an error was provided
 	if err == nil {
 		return true
@@ -178,8 +178,8 @@ func (c *Config) ignoreUpdateSchemaErrors(query string, err error) bool {
 	//Run each UpdateIngoreErrorFunc. This will check if the error returned from running
 	//the query can be safely ignored. Once one function returns "true" (to ignore the
 	//error that occured), the other functions are skipped.
-	for _, f := range c.UpdateIgnoreErrorFuncs {
-		ignore := f(*c, query, err)
+	for _, f := range cfg.UpdateIgnoreErrorFuncs {
+		ignore := f(*cfg, query, err)
 		if ignore {
 			return true
 		}
