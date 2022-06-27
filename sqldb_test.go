@@ -598,6 +598,10 @@ func TestDeploySchema(t *testing.T) {
 		t.Fatal(err)
 		return
 	}
+	if !c.Connected() {
+		t.Fatal("Connection should still be connected.")
+		return
+	}
 
 	//Try inserting
 	insert := `INSERT INTO users (Username) VALUES (?)`
