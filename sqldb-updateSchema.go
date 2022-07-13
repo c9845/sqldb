@@ -81,13 +81,7 @@ func (cfg *Config) UpdateSchemaWithOps(ops UpdateSchemaOptions) (err error) {
 	//Run each update query.
 	cfg.debugPrintln("sqldb.UpdateSchema", "Running UpdateQueries...")
 	for _, q := range cfg.UpdateQueries {
-		//Log out some info about the query being run for diagnostics.
-		const trimLength = 80 //arbitrary number, longer shows more info but can clog up terminal output.
-		if len(q) > trimLength {
-			cfg.debugPrintln(strings.TrimSpace(q[:trimLength]) + "...")
-		} else {
-			cfg.debugPrintln(q)
-		}
+		cfg.debugPrintln(q)
 
 		//Execute the query. Always log on error so users can identify query that has
 		//an error. Connection always gets closed since an error occured.
@@ -132,9 +126,9 @@ func (cfg *Config) UpdateSchemaWithOps(ops UpdateSchemaOptions) (err error) {
 
 	if ops.CloseConnection {
 		//Close() is handled by defer above.
-		cfg.debugPrintln("sqldb.UpdateSchame", "Connection closed after success.")
+		cfg.debugPrintln("sqldb.UpdateSchama", "Connection closed after success.")
 	} else {
-		cfg.debugPrintln("sqldb.UpdateSchame", "Connection left open after success.")
+		cfg.debugPrintln("sqldb.UpdateSchama", "Connection left open after success.")
 	}
 
 	return
@@ -250,12 +244,19 @@ func UFModifySQLiteColumn(c Config, query string, err error) bool {
 	return false
 }
 
-//UFAlreadyExists handles errors when an index already exists. This may also work for
-//other thngs that already exist (columns). If you use "IF NOT EXISTS" in your query to
-//add a column or index this function will not be used since IF NOT EXISTS doesn't return
-//an error if the item already exists.
-func UFAlreadyExists(c Config, query string, err error) bool {
-	if strings.Contains(err.Error(), "already exists") {
+//UFIndexAlreadyExists handles errors when an index already exists. If you use
+//"IF NOT EXISTS" in your query to add a column or index this function will not be
+//used since IF NOT EXISTS doesn't return an error if the item already exists.
+func UFIndexAlreadyExists(c Config, query string, err error) bool {
+	createInx := strings.Contains(strings.ToUpper(query), "CREATE INDEX")
+
+	//mysql & mariadb
+	existsM := strings.Contains(strings.ToLower(err.Error()), "duplicate key name")
+
+	//sqlite
+	existsS := strings.Contains(strings.ToLower(err.Error()), "already exists")
+
+	if createInx && (existsM || existsS) {
 		c.debugPrintln("  Ignoring query, " + err.Error())
 		return true
 	}
