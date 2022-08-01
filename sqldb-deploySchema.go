@@ -119,7 +119,7 @@ func (cfg *Config) DeploySchemaWithOps(ops DeploySchemaOptions) (err error) {
 	for _, q := range cfg.DeployQueries {
 		//Translate the query if needed. This will only translate queries with
 		//CREATE TABLE in the text.
-		q = cfg.runTranslateDeployCreateTableFuncs(q)
+		q = cfg.runTranslateCreateTableFuncs(q)
 
 		//Skip queries that insert data if needed.
 		if strings.Contains(strings.ToUpper(q), "INSERT INTO") && ops.SkipInsert {

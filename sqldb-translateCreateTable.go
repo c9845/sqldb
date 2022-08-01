@@ -4,9 +4,9 @@ import (
 	"strings"
 )
 
-//runTranslateDeployCreateTableFuncs runs the list of TranslateDeployCreateTableFuncs
-//funcs defined on a query when Deploy() is called.
-func (cfg *Config) runTranslateDeployCreateTableFuncs(originalQuery string) (translatedQuery string) {
+//runTranslateCreateTableFuncs runs the list of TranslateCreateTableFuncs funcs
+//defined on a query when Deploy() or Update() is called.
+func (cfg *Config) runTranslateCreateTableFuncs(originalQuery string) (translatedQuery string) {
 	//Make sure query is a CREATE TABLE query.
 	if !strings.Contains(strings.ToUpper(originalQuery), "CREATE TABLE") {
 		return originalQuery
@@ -14,7 +14,7 @@ func (cfg *Config) runTranslateDeployCreateTableFuncs(originalQuery string) (tra
 
 	//Run each translate func. A query may be translated by multiple funcs.
 	workingQuery := originalQuery
-	for _, f := range cfg.TranslateDeployCreateTableFuncs {
+	for _, f := range cfg.TranslateCreateTableFuncs {
 		workingQuery = f(workingQuery)
 	}
 

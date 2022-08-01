@@ -81,7 +81,19 @@ func (cfg *Config) UpdateSchemaWithOps(ops UpdateSchemaOptions) (err error) {
 	//Run each update query.
 	cfg.debugPrintln("sqldb.UpdateSchema", "Running UpdateQueries...")
 	for _, q := range cfg.UpdateQueries {
-		cfg.debugPrintln(q)
+		//Translate the query if needed. This will only translate queries with
+		//CREATE TABLE in the text.
+		q = cfg.runTranslateCreateTableFuncs(q)
+
+		//Log out some info about the query being run for diagnostics.
+		if strings.Contains(q, "CREATE TABLE") {
+			idx := strings.Index(q, "(")
+			if idx > 0 {
+				cfg.debugPrintln(strings.TrimSpace(q[:idx]) + "...")
+			}
+		} else {
+			cfg.debugPrintln(q)
+		}
 
 		//Execute the query. Always log on error so users can identify query that has
 		//an error. Connection always gets closed since an error occured.
@@ -93,10 +105,10 @@ func (cfg *Config) UpdateSchemaWithOps(ops UpdateSchemaOptions) (err error) {
 			return
 		}
 	}
-	cfg.debugPrintln("sqldb.UpdateSchema", "Runnign UpdateQueries...done")
+	cfg.debugPrintln("sqldb.UpdateSchema", "Running UpdateQueries...done")
 
 	//Run each update func.
-	cfg.debugPrintln("sqldb.UpdateSchema", "Runnign UpdateFuncs...")
+	cfg.debugPrintln("sqldb.UpdateSchema", "Running UpdateFuncs...")
 	for _, f := range cfg.UpdateFuncs {
 		//Get function name for diagnostics.
 		rawNameWithPath := runtime.FuncForPC(reflect.ValueOf(f).Pointer()).Name()

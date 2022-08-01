@@ -167,16 +167,6 @@ type Config struct {
 	//compared to DeployQueries. Each func should be safe to rerun multiple times!
 	DeployFuncs []DeployFunc
 
-	//TranslateDeployCreateTableFuncs is a list of functions run against each
-	//DeployQuery that contains a CREATE TABLE clause that modifies the query to
-	//translate it from one database format to another. This tooling is used so that
-	//you can write your CREATE TABLE queries in one database format (ex.: MySQL) but
-	//deploy your database in multiple formats (ex.: MySQL & SQLite).
-	//
-	//A list of default funcs are predefined. See funcs in this package starting with
-	//TF...
-	TranslateDeployCreateTableFuncs []func(string) string
-
 	//UpdateQueries is a list of queries used to update the database schema. These
 	//queries typically add new columns, alter a column's type, or drop a column.
 	//The queries listed here will be executed in order when UpdateSchema() is called.
@@ -198,6 +188,16 @@ type Config struct {
 	//
 	//Some default funcs are predefined. See funcs in this package starting with UF...
 	UpdateIgnoreErrorFuncs []UpdateIgnoreErrorFunc
+
+	//TranslateCreateTableFuncs is a list of functions run against each DeployQuery
+	//or UpdateQuery that contains a CREATE TABLE clause that modifies the query to
+	//translate it from one database format to another. This tooling is used so that
+	//you can write your CREATE TABLE queries in one database format (ex.: MySQL) but
+	//deploy your database in multiple formats (ex.: MySQL & SQLite).
+	//
+	//A list of default funcs are predefined. See funcs in this package starting with
+	//TF...
+	TranslateCreateTableFuncs []func(string) string
 
 	//Debug turns on diagnostic logging.
 	Debug bool

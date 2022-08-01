@@ -51,7 +51,7 @@ func TestUFModifySQLiteColumn(t *testing.T) {
 	}
 }
 
-func TestUFAlreadyExists(t *testing.T) {
+func TestUFIndexAlreadyExists(t *testing.T) {
 	//sqlite testing
 	c := NewSQLiteConfig("/path/to/db.db")
 
