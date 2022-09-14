@@ -10,35 +10,30 @@ import (
 	"github.com/jmoiron/sqlx"
 )
 
-//DeployFunc is the format of a function used to deploy the database schema. The type
-//is defined for easier use when defining the list of DeployFuncs versus having to
-//type "cfg.DeployFuncs = []func(*sqlx.DB) error {...}".
+// DeployFunc is the format of a function used to deploy the database schema. The type
+// is defined for easier use when defining the list of DeployFuncs versus having to
+// type "cfg.DeployFuncs = []func(*sqlx.DB) error {...}".
 type DeployFunc func(*sqlx.DB) error
 
-//DeploySchemaOptions provides options when deploying a schema.
+// DeploySchemaOptions provides options when deploying a schema.
 //
-//SkipInsert is used prevent any DeployQueries with "INSERT INTO" statements from
-//running. This is used to deploy a completely empty database and is useful for
-//migrating data or backups.
-//
-//CloseConnection determines if the database connection should be closed after this
-//func successfully completes. This was added to support SQLite in-memory databases
-//since each connection to an im-memory db uses a new database, so if we deploy with
-//a connection we need to reuse it to run queries.
+// CloseConnection determines if the database connection should be closed after this
+// func successfully completes. This was added to support SQLite in-memory databases
+// since each connection to an im-memory db uses a new database, so if we deploy with
+// a connection we need to reuse it to run queries.
 type DeploySchemaOptions struct {
-	SkipInsert      bool
 	CloseConnection bool
 }
 
-//DeploySchemaWithOps deploys the database schema by running the list of DeployQueries
-//and DeployFuncs defined in config. This will create the database if needed. This is
-//typically used to deploy an empty, or near empty, database. A database connection
-//must not already be established; this func will establish the connection.
+// DeploySchemaWithOps deploys the database schema by running the list of DeployQueries
+// and DeployFuncs defined in config. This will create the database if needed. This is
+// typically used to deploy an empty, or near empty, database. A database connection
+// must not already be established; this func will establish the connection.
 //
-//Although each DeployQuery and DeployFunc should be indempotent (ex.: using CREATE
-//TABLE IF NOT EXISTS), you should still not call this func each time your app starts
-//or otherwise. Typically you would check if the database already exists or use a
-//flag, such as --deploy-db, to run this func.
+// Although each DeployQuery and DeployFunc should be indempotent (ex.: using CREATE
+// TABLE IF NOT EXISTS), you should still not call this func each time your app starts
+// or otherwise. Typically you would check if the database already exists or use a
+// flag, such as --deploy-db, to run this func.
 func (cfg *Config) DeploySchemaWithOps(ops DeploySchemaOptions) (err error) {
 	//Make sure a connection isn't already established to prevent overwriting anything.
 	//This forces users to call Close() first to prevent any incorrect db usage.
@@ -121,11 +116,6 @@ func (cfg *Config) DeploySchemaWithOps(ops DeploySchemaOptions) (err error) {
 		//CREATE TABLE in the text.
 		q = cfg.runTranslateCreateTableFuncs(q)
 
-		//Skip queries that insert data if needed.
-		if strings.Contains(strings.ToUpper(q), "INSERT INTO") && ops.SkipInsert {
-			continue
-		}
-
 		//Log out some info about the query being run for diagnostics.
 		if strings.Contains(q, "CREATE TABLE") {
 			idx := strings.Index(q, "(")
@@ -180,22 +170,21 @@ func (cfg *Config) DeploySchemaWithOps(ops DeploySchemaOptions) (err error) {
 	return
 }
 
-//DeploySchemaWithOps deploys the database for the default package level config.
+// DeploySchemaWithOps deploys the database for the default package level config.
 func DeploySchemaWithOps(ops DeploySchemaOptions) (err error) {
 	return config.DeploySchemaWithOps(ops)
 }
 
-//DeploySchema runs DeploySchemaWithOps with some defaults set.
-func (cfg *Config) DeploySchema(skipInsert bool) (err error) {
+// DeploySchema runs DeploySchemaWithOps with some defaults set.
+func (cfg *Config) DeploySchema() (err error) {
 	ops := DeploySchemaOptions{
-		SkipInsert:      skipInsert,
 		CloseConnection: true,
 	}
 	return cfg.DeploySchemaWithOps(ops)
 }
 
-//DeploySchema runs DeploySchemaWithOps with some defaults set for the default package
-//level config.
-func DeploySchema(skipInsert bool) (err error) {
-	return config.DeploySchema(skipInsert)
+// DeploySchema runs DeploySchemaWithOps with some defaults set for the default package
+// level config.
+func DeploySchema() (err error) {
+	return config.DeploySchema()
 }

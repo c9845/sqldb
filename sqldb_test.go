@@ -593,7 +593,7 @@ func TestDeploySchema(t *testing.T) {
 	}
 	c.DeployFuncs = []DeployFunc{insertInitial}
 
-	err := c.DeploySchemaWithOps(DeploySchemaOptions{false, false})
+	err := c.DeploySchemaWithOps(DeploySchemaOptions{false})
 	if err != nil {
 		t.Fatal(err)
 		return
@@ -624,7 +624,7 @@ func TestDeploySchema(t *testing.T) {
 	}
 
 	//Try deploying to an already connected to db. This should fail.
-	err = c.DeploySchemaWithOps(DeploySchemaOptions{false, false})
+	err = c.DeploySchemaWithOps(DeploySchemaOptions{false})
 	if err != ErrConnected {
 		t.Fatal("Error about db already connected should have occured.")
 		return
@@ -635,7 +635,7 @@ func TestDeploySchema(t *testing.T) {
 
 	//Try deploying with an invalid config.
 	c.SQLitePath = ""
-	err = c.DeploySchemaWithOps(DeploySchemaOptions{false, false})
+	err = c.DeploySchemaWithOps(DeploySchemaOptions{false})
 	if err == nil {
 		t.Fatal("Error about invalid config should have occured.")
 		return
@@ -650,7 +650,7 @@ func TestDeploySchema(t *testing.T) {
 	}
 	c.DeployFuncs = []DeployFunc{insertInitial}
 
-	err = c.DeploySchemaWithOps(DeploySchemaOptions{false, false})
+	err = c.DeploySchemaWithOps(DeploySchemaOptions{false})
 	if err == nil {
 		t.Fatal("Error should have occured because of bad deploy func.")
 		return
@@ -678,7 +678,7 @@ func TestDeploySchemaAndClose(t *testing.T) {
 	`
 	c.DeployQueries = []string{createTable}
 
-	err := c.DeploySchemaWithOps(DeploySchemaOptions{false, true})
+	err := c.DeploySchemaWithOps(DeploySchemaOptions{true})
 	if err != nil {
 		t.Fatal(err)
 		return
@@ -711,7 +711,7 @@ func TestUpdateSchema(t *testing.T) {
 	`
 	c.DeployQueries = []string{createTable}
 
-	err := c.DeploySchemaWithOps(DeploySchemaOptions{false, false})
+	err := c.DeploySchemaWithOps(DeploySchemaOptions{false})
 	if err != nil {
 		t.Fatal(err)
 		return
@@ -785,7 +785,7 @@ func TestUpdateSchema(t *testing.T) {
 	`
 	c.DeployQueries = []string{createTable}
 
-	err = c.DeploySchemaWithOps(DeploySchemaOptions{false, false})
+	err = c.DeploySchemaWithOps(DeploySchemaOptions{false})
 	if err != nil {
 		t.Fatal(err)
 		return
