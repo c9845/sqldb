@@ -71,7 +71,7 @@ func (cfg *Config) DeploySchemaWithOps(ops DeploySchemaOptions) (err error) {
 	//For mariadb/mysql, we need to create the actual database on the server.
 	//For SQLite , we need to Ping() the connection so the file is created on disk.
 	switch cfg.Type {
-	case DBTypeMySQL, DBTypeMariaDB:
+	case DBTypeMySQL, DBTypeMariaDB, DBTypeMSSQL:
 		q := `CREATE DATABASE IF NOT EXISTS ` + cfg.Name
 		_, innerErr := conn.Exec(q)
 		if innerErr != nil {

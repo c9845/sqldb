@@ -208,7 +208,7 @@ func TestValidate(t *testing.T) {
 
 func TestBuildConnectionString(t *testing.T) {
 	//For deploying mysql/mariadb.
-	c := NewMariaDBConfig("10.0.01", defaultMariaDBPort, "", "user", "password")
+	c := NewMariaDBConfig("10.0.0.1", defaultMariaDBPort, "", "user", "password")
 	connString := c.buildConnectionString(true)
 	manuallyBuilt := c.User + ":" + c.Password + "@tcp(" + c.Host + ":" + strconv.FormatUint(uint64(c.Port), 10) + ")/"
 	if connString != manuallyBuilt {
@@ -217,7 +217,7 @@ func TestBuildConnectionString(t *testing.T) {
 	}
 
 	//For connecting to already deployted mysql/mariadb.
-	c = NewMariaDBConfig("10.0.01", defaultMariaDBPort, "db-name", "user", "password")
+	c = NewMariaDBConfig("10.0.0.1", defaultMariaDBPort, "db-name", "user", "password")
 	connString = c.buildConnectionString(false)
 	manuallyBuilt = c.User + ":" + c.Password + "@tcp(" + c.Host + ":" + strconv.FormatUint(uint64(c.Port), 10) + ")/" + c.Name
 	if connString != manuallyBuilt {
@@ -250,6 +250,15 @@ func TestBuildConnectionString(t *testing.T) {
 	}
 	if !strings.Contains(connString, "busy_timeout") {
 		t.Fatal("PRAGMAs not added to connection string as expected.", connString)
+		return
+	}
+
+	//For deploying mssql.
+	c = NewMSSQLConfig("10.0.0.1", defaultMSSQLPort, "", "user", "password")
+	connString = c.buildConnectionString(true)
+	manuallyBuilt = "sqlserver://" + c.User + ":" + c.Password + "@" + c.Host + ":" + strconv.FormatUint(uint64(c.Port), 10) + "?database=" + c.Name
+	if connString != manuallyBuilt {
+		t.Fatal("Connection string not built correctly.", connString, manuallyBuilt)
 		return
 	}
 }

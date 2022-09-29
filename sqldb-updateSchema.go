@@ -10,37 +10,37 @@ import (
 	"github.com/jmoiron/sqlx"
 )
 
-//UpdateFunc is the format of a function used to update the database schema. The type
-//is defined for easier use when defining the list of UpdateFuncs versus having to
-//type "cfg.UpdateFuncs = []func(*sqlx.Tx) error {...}".
+// UpdateFunc is the format of a function used to update the database schema. The type
+// is defined for easier use when defining the list of UpdateFuncs versus having to
+// type "cfg.UpdateFuncs = []func(*sqlx.Tx) error {...}".
 type UpdateFunc func(*sqlx.Tx) error
 
-//UpdateSchemaOptions provides options when updating a schema.
+// UpdateSchemaOptions provides options when updating a schema.
 //
-//CloseConnection determines if the database connection should be closed after ths
-//func successfully completes. This was added to support SQLite in-memory databases
-//since each connection to an im-memory db uses a new database, so if we deploy with
-//a connection we need to reuse it to run queries.
+// CloseConnection determines if the database connection should be closed after ths
+// func successfully completes. This was added to support SQLite in-memory databases
+// since each connection to an im-memory db uses a new database, so if we deploy with
+// a connection we need to reuse it to run queries.
 type UpdateSchemaOptions struct {
 	CloseConnection bool
 }
 
-//UpdateSchemaWithOps updates a database by running the list of UpdateQueries and
-//UpdateFuncs defined in config. This is typically used to add new colums, alter
-//columns, add indexes, or updates values stored in the database.
+// UpdateSchemaWithOps updates a database by running the list of UpdateQueries and
+// UpdateFuncs defined in config. This is typically used to add new colums, alter
+// columns, add indexes, or updates values stored in the database.
 //
-//Although each UpdateQuery and DeployFunc should be indempotent, you should still
-//not call this func each time your app starts or otherwise. Typically you would
-//check if the database has already been updated or use a flag, such as  --update-db,
-//to run this func.
+// Although each UpdateQuery and DeployFunc should be indempotent, you should still
+// not call this func each time your app starts or otherwise. Typically you would
+// check if the database has already been updated or use a flag, such as  --update-db,
+// to run this func.
 //
-//When each UpdateQuery is run, if an error occurs the error is passed into each defined
-//UpdateIgnoreErrorFuncs to determine if and how the error needs to be handled.
-//Sometimes an error during a schema update isn't actually an error we need to handle,
-//such as adding a column that already exists. Most times these types of errors occur
-//because the UpdateSchema func is being rerun. The list of funcs you add to
-//UpdateIgnoreErrorFuncs will check the returned error message and query and determine
-//if the error can be ignored.
+// When each UpdateQuery is run, if an error occurs the error is passed into each defined
+// UpdateIgnoreErrorFuncs to determine if and how the error needs to be handled.
+// Sometimes an error during a schema update isn't actually an error we need to handle,
+// such as adding a column that already exists. Most times these types of errors occur
+// because the UpdateSchema func is being rerun. The list of funcs you add to
+// UpdateIgnoreErrorFuncs will check the returned error message and query and determine
+// if the error can be ignored.
 func (cfg *Config) UpdateSchemaWithOps(ops UpdateSchemaOptions) (err error) {
 	//Check if a connection to the database is already established, and if so, use it.
 	//If not, try to connect.
@@ -146,13 +146,13 @@ func (cfg *Config) UpdateSchemaWithOps(ops UpdateSchemaOptions) (err error) {
 	return
 }
 
-//UpdateSchemaWithOps updates the database for the default package level config.
+// UpdateSchemaWithOps updates the database for the default package level config.
 func UpdateSchemaWithOps(ops UpdateSchemaOptions) (err error) {
 	return config.UpdateSchemaWithOps(ops)
 }
 
-//UpdateSchema runs UpdateSchemaWithOps with some defaults set. This was implemented
-//to support legacy compatibility while expanding the feature set with update options.
+// UpdateSchema runs UpdateSchemaWithOps with some defaults set. This was implemented
+// to support legacy compatibility while expanding the feature set with update options.
 func (cfg *Config) UpdateSchema() (err error) {
 	ops := UpdateSchemaOptions{
 		CloseConnection: true,
@@ -160,21 +160,21 @@ func (cfg *Config) UpdateSchema() (err error) {
 	return cfg.UpdateSchemaWithOps(ops)
 }
 
-//UpdateSchema runs UpdateSchemaWithOps with some defaults set for the default package
-//level config. This was implemented to to support legacy compatibility while expanding
-//the feature set with update options.
+// UpdateSchema runs UpdateSchemaWithOps with some defaults set for the default package
+// level config. This was implemented to to support legacy compatibility while expanding
+// the feature set with update options.
 func UpdateSchema() (err error) {
 	return config.UpdateSchema()
 }
 
-//ignoreUpdateSchemaErrors handles when an error is returned from an UpdateQuery when
-//run from UpdateSchema(). This is used to handle queries that can fail and aren't really
-//an error (i.e.: adding a column that already exists). Excusable errors can happen
-//because UpdateQueries should be able to run more than once (i.e.: if you run UpdateSchema()
-//each time your app starts).
+// ignoreUpdateSchemaErrors handles when an error is returned from an UpdateQuery when
+// run from UpdateSchema(). This is used to handle queries that can fail and aren't really
+// an error (i.e.: adding a column that already exists). Excusable errors can happen
+// because UpdateQueries should be able to run more than once (i.e.: if you run UpdateSchema()
+// each time your app starts).
 //
-//The query to update the schema is passed in so that we can check what an error is in
-//relation to. Sometimes the error returned doesn't provide enough context.
+// The query to update the schema is passed in so that we can check what an error is in
+// relation to. Sometimes the error returned doesn't provide enough context.
 func (cfg *Config) ignoreUpdateSchemaErrors(query string, err error) bool {
 	//make sure an error was provided
 	if err == nil {
@@ -194,18 +194,18 @@ func (cfg *Config) ignoreUpdateSchemaErrors(query string, err error) bool {
 	return false
 }
 
-//UpdateIgnoreErrorFunc is function for handling errors returned when trying to update
-//the schema of your database using UpdateSchema(). The query being run, as well as the
-//error from running the query, are passed in so that the function can determine if this
-//error can be ignored for this query. Each function of this type, and used for this
-//purpose should be very narrowly focused so as not to ignore errors by mistake (false
-//positives).
+// UpdateIgnoreErrorFunc is function for handling errors returned when trying to update
+// the schema of your database using UpdateSchema(). The query being run, as well as the
+// error from running the query, are passed in so that the function can determine if this
+// error can be ignored for this query. Each function of this type, and used for this
+// purpose should be very narrowly focused so as not to ignore errors by mistake (false
+// positives).
 type UpdateIgnoreErrorFunc func(Config, string, error) bool
 
-//UFAddDuplicateColumn checks if an error was generated because a column already exists.
-//This typically happens because you are rerunning UpdateSchema() and the column has
-//already been added. This error can be safely ignored since a duplicate column won't
-//be create.
+// UFAddDuplicateColumn checks if an error was generated because a column already exists.
+// This typically happens because you are rerunning UpdateSchema() and the column has
+// already been added. This error can be safely ignored since a duplicate column won't
+// be create.
 func UFAddDuplicateColumn(c Config, query string, err error) bool {
 	addCol := strings.Contains(strings.ToUpper(query), "ADD COLUMN")
 	dup := strings.Contains(strings.ToLower(err.Error()), "duplicate column")
@@ -218,9 +218,9 @@ func UFAddDuplicateColumn(c Config, query string, err error) bool {
 	return false
 }
 
-//UFDropUnknownColumn checks if an error from was generated because a column does not exist.
-//This typically happens because you are rerunning UpdateSchema() and the column has
-//already been dropped. This error can be safely ignored in most cases.
+// UFDropUnknownColumn checks if an error from was generated because a column does not exist.
+// This typically happens because you are rerunning UpdateSchema() and the column has
+// already been dropped. This error can be safely ignored in most cases.
 func UFDropUnknownColumn(c Config, query string, err error) bool {
 	dropCol := strings.Contains(strings.ToUpper(query), "DROP COLUMN")
 
@@ -238,14 +238,14 @@ func UFDropUnknownColumn(c Config, query string, err error) bool {
 	return false
 }
 
-//UFModifySQLiteColumn checks if an error occured because you are trying to modify a
-//column for a SQLite database. SQLite does not allow modifying columns. In this case,
-//we just ignore the error. This is ok since SQLite allows you to store any type of value
-//in any column.
+// UFModifySQLiteColumn checks if an error occured because you are trying to modify a
+// column for a SQLite database. SQLite does not allow modifying columns. In this case,
+// we just ignore the error. This is ok since SQLite allows you to store any type of value
+// in any column.
 //
-//To get around this error, you should create a new table with the new schema, copy the
-//old data to the new table, delete the old table, and rename the new table to the old
-//table.
+// To get around this error, you should create a new table with the new schema, copy the
+// old data to the new table, delete the old table, and rename the new table to the old
+// table.
 func UFModifySQLiteColumn(c Config, query string, err error) bool {
 	//ignore queries that modify a column for sqlite dbs
 	if strings.Contains(strings.ToUpper(query), "MODIFY COLUMN") && c.Type == DBTypeSQLite {
@@ -256,9 +256,9 @@ func UFModifySQLiteColumn(c Config, query string, err error) bool {
 	return false
 }
 
-//UFIndexAlreadyExists handles errors when an index already exists. If you use
-//"IF NOT EXISTS" in your query to add a column or index this function will not be
-//used since IF NOT EXISTS doesn't return an error if the item already exists.
+// UFIndexAlreadyExists handles errors when an index already exists. If you use
+// "IF NOT EXISTS" in your query to add a column or index this function will not be
+// used since IF NOT EXISTS doesn't return an error if the item already exists.
 func UFIndexAlreadyExists(c Config, query string, err error) bool {
 	createInx := strings.Contains(strings.ToUpper(query), "CREATE INDEX")
 

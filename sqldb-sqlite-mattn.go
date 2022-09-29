@@ -16,5 +16,5 @@ const (
 	sqliteDriverName = "sqlite3"
 )
 
-//Placeholder so that this variable is defined for this SQLite library.
+// Placeholder so that this variable is defined for this SQLite library.
 var sqliteDefaultPragmas = []string{}

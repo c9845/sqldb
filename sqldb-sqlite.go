@@ -7,7 +7,7 @@ import (
 	"github.com/jmoiron/sqlx"
 )
 
-//defaults
+// defaults
 const (
 	//Possible libraries. Used in comparisons, such as when building connection string
 	//pragmas.
@@ -29,7 +29,7 @@ const (
 	InMemoryFilePathRaceSafe = "file::memory:?cache=shared"
 )
 
-//NewSQLiteConfig returns a config for connecting to a SQLite database.
+// NewSQLiteConfig returns a config for connecting to a SQLite database.
 func NewSQLiteConfig(pathToFile string) (cfg *Config) {
 	//The returned error can be ignored since it only returns if a bad db type is
 	//provided but we are providing a known-good db type.
@@ -47,29 +47,29 @@ func NewSQLiteConfig(pathToFile string) (cfg *Config) {
 	return
 }
 
-//DefaultSQLiteConfig initializes the globally accessible package level config with
-//some defaults set.
+// DefaultSQLiteConfig initializes the globally accessible package level config with
+// some defaults set.
 func DefaultSQLiteConfig(pathToFile string) {
 	cfg := NewSQLiteConfig(pathToFile)
 	config = *cfg
 }
 
-//IsSQLite returns true if the database is a SQLite database. This is easier
-//than checking for equality against the Type field in the config.
+// IsSQLite returns true if the database is a SQLite database. This is easier
+// than checking for equality against the Type field in the config.
 func (cfg *Config) IsSQLite() bool {
 	return cfg.Type == DBTypeSQLite
 }
 
-//IsSQLite returns true if the database is a SQLite database. This is easier
-//than checking for equality against the Type field in the config.
+// IsSQLite returns true if the database is a SQLite database. This is easier
+// than checking for equality against the Type field in the config.
 func IsSQLite() bool {
 	return config.IsSQLite()
 }
 
-//GetSQLiteVersion returns the version of SQLite that is embedded into the app. This
-//works by creating a temporary in-memory SQLite database to run a query against. We
-//don't use the config or an already established connection because we may want to
-//get the SQLiter version before a database is connected to!
+// GetSQLiteVersion returns the version of SQLite that is embedded into the app. This
+// works by creating a temporary in-memory SQLite database to run a query against. We
+// don't use the config or an already established connection because we may want to
+// get the SQLiter version before a database is connected to!
 func GetSQLiteVersion() (version string, err error) {
 	//Get driver name based on SQLite library in use.
 	driver, err := getDriver(DBTypeSQLite)
@@ -93,19 +93,19 @@ func GetSQLiteVersion() (version string, err error) {
 	return
 }
 
-//GetSQLiteLibrary returns the SQLite library that was used to build the binary. The
-//library is set at build/run with -tags {mattn || modernc}.
+// GetSQLiteLibrary returns the SQLite library that was used to build the binary. The
+// library is set at build/run with -tags {mattn || modernc}.
 func GetSQLiteLibrary() string {
 	return sqliteLibrary
 }
 
-//buildPragmaString builds the string of pragmas that should be appended to the filename
-//when connecting to a SQLite database. This is needed to set pragmas reliably since
-//pragmas must be set upon initially connecting to the database. The difficulty in
-//setting pragmas is that each SQLite library (mattn vs modernc) has a slighly different
-//format for setting pragmas. This takes the list of pragmas in SQLite query format (
-//PRAGMA busy_timeout = 5000) and translates them to the correct format for the SQLite
-//library in use.
+// buildPragmaString builds the string of pragmas that should be appended to the filename
+// when connecting to a SQLite database. This is needed to set pragmas reliably since
+// pragmas must be set upon initially connecting to the database. The difficulty in
+// setting pragmas is that each SQLite library (mattn vs modernc) has a slighly different
+// format for setting pragmas. This takes the list of pragmas in SQLite query format (
+// PRAGMA busy_timeout = 5000) and translates them to the correct format for the SQLite
+// library in use.
 func buildPragmaString(pragmas []string) (filenamePragmaString string) {
 	v := url.Values{}
 
@@ -151,9 +151,9 @@ func buildPragmaString(pragmas []string) (filenamePragmaString string) {
 	return "?" + v.Encode()
 }
 
-//GetDefaultSQLitePragmas returns the default PRAGMAs this package defines for use with
-//either SQLite library. This can be helpful for debugging. We don't just export the
-//sqliteDefaultPragmas slice so that it cannot be modified.
+// GetDefaultSQLitePragmas returns the default PRAGMAs this package defines for use with
+// either SQLite library. This can be helpful for debugging. We don't just export the
+// sqliteDefaultPragmas slice so that it cannot be modified.
 func GetDefaultSQLitePragmas() []string {
 	return sqliteDefaultPragmas
 }

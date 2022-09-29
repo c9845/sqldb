@@ -4,16 +4,16 @@ using a SQL database easier. This provides some wrapping around the sql package.
 package was written to reduce the amount of boilerplate code to connect, deploy, or
 update a database.
 
+NOTE! Microsoft SQL Server support is very untested!
 
-Global or Local DB Connection
+# Global or Local DB Connection
 
 You can use this package in two methods: as a singleton with the database configuration
 and connection stored in a package-level globally-accessible variable, or store the
 configuration and connection somewhere else in your application. Storing the data
 yourself allows for connecting to multiple databases at once.
 
-
-Deploying a Database
+# Deploying a Database
 
 Deploying of a schema is done via queries stored in your configuration's DeployQueries
 and DeployFuncs fields. These queries and funcs are run when DeploySchema() is called.
@@ -37,8 +37,7 @@ since different databases have different CREATE TABLE query formats or column ty
 for example, SQLite doesn't really have VARCHAR). Each DeployQuery is run through each
 TranslateDeployCreateTableFunc with translation of the query performed as needed.
 
-
-Updating a Schema
+# Updating a Schema
 
 Updating a database schema happens in a similar manner to deploying, a list of queries
 in UpdateQueries and UpdateFuncs is run against the database. All queries are run
@@ -50,8 +49,7 @@ to determine if an error can be ignored. This is typically used to ignore errors
 when you are adding a column that already exists, removing a column that is already
 removed, etc. These funcs just help ignore errors that aren't really errors.
 
-
-SQLite Library
+# SQLite Library
 
 This package support two SQLite libraries, mattn/go-sqlite3 and modernc/sqlite. The mattn
 library encapsulates the SQLite C source code and requires CGO for compilation which
@@ -65,10 +63,11 @@ the longer history of this library being available and the fact that this uses t
 SQLite C source code.
 
 Use either library with build tags:
-  go build -tags mattn ...
-  go build -tags modernc ...
-  go run -tags mattn ...
-  go run -tags modernc ...
+
+	go build -tags mattn ...
+	go build -tags modernc ...
+	go run -tags mattn ...
+	go run -tags modernc ...
 
 The mattn/go-sqlite3 library sets some default PRAGMA values, as noted in the source code
 at https://github.com/mattn/go-sqlite3/blob/ae2a61f847e10e6dd771ecd4e1c55e0421cdc7f9/sqlite3.go#L1086.
@@ -77,8 +76,7 @@ mattn/go-sqlite3 and modernc/sqlite more similarly, some of these mattn/go-sqlit
 PRAGMAs are set when using the modernc/sqlite library. This is simply done to make
 using either SQLite library more comparibly interchangable.
 
-
-Notes
+# Notes
 
 This package uses "sqlx" instead of the go standard library "sql" package because "sqlx"
 provides some additional tooling which makes using the database a bit easier (i.e.: Get(),
@@ -97,6 +95,7 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -109,7 +108,7 @@ import (
 	"golang.org/x/exp/slices"
 )
 
-//Config is the details used for establishing and using a database connection.
+// Config is the details used for establishing and using a database connection.
 type Config struct {
 	//Type represents the type of database to use.
 	Type dbType
@@ -208,29 +207,31 @@ type Config struct {
 	connection *sqlx.DB
 }
 
-//Supported databases.
+// Supported databases.
 type dbType string
 
 const (
 	DBTypeMySQL   = dbType("mysql")
 	DBTypeMariaDB = dbType("mariadb")
 	DBTypeSQLite  = dbType("sqlite")
+	DBTypeMSSQL   = dbType("mssql")
 )
 
 var validDBTypes = []dbType{
 	DBTypeMySQL,
 	DBTypeMariaDB,
 	DBTypeSQLite,
+	DBTypeMSSQL,
 }
 
-//DBType returns a dbType. This is used when parsing a user-provided database type (such
-//as from a configuration file) to convert to a db type defined in this package.
+// DBType returns a dbType. This is used when parsing a user-provided database type (such
+// as from a configuration file) to convert to a db type defined in this package.
 func DBType(s string) dbType {
 	return dbType(s)
 }
 
-//valid checks if a provided dbType is one of our supported databases. This is used
-//when validating.
+// valid checks if a provided dbType is one of our supported databases. This is used
+// when validating.
 func (t dbType) valid() error {
 	contains := slices.Contains(validDBTypes, t)
 	if contains {
@@ -240,7 +241,7 @@ func (t dbType) valid() error {
 	return fmt.Errorf("invalid db type, should be one of '%s', got '%s'", validDBTypes, t)
 }
 
-//errors
+// errors
 var (
 	//ErrConnected is returned when a trying to establish a connection to an already
 	//connected-to database.
@@ -280,15 +281,15 @@ var (
 	ErrExtraCommaInColumnString = errors.New("sqldb: extra comma in column name")
 )
 
-//config is the package level saved config. This stores your config when you want to
-//use this package as a singleton and store your config for global use. This is used
-//when you call one of the NewDefaultConfig() funcs which returns a pointer to this
-//config.
+// config is the package level saved config. This stores your config when you want to
+// use this package as a singleton and store your config for global use. This is used
+// when you call one of the NewDefaultConfig() funcs which returns a pointer to this
+// config.
 var config Config
 
-//NewConfig returns a base configuration that will need to be modified for use to
-//connect to and interact with a database. Typically you would use New...Config()
-//instead.
+// NewConfig returns a base configuration that will need to be modified for use to
+// connect to and interact with a database. Typically you would use New...Config()
+// instead.
 func NewConfig(t dbType) (cfg *Config, err error) {
 	err = t.valid()
 	if err != nil {
@@ -302,29 +303,29 @@ func NewConfig(t dbType) (cfg *Config, err error) {
 	return
 }
 
-//DefaultConfig initializes the globally accessible package level config with some
-//defaults set. Typically you would use Default...Config() instead.
+// DefaultConfig initializes the globally accessible package level config with some
+// defaults set. Typically you would use Default...Config() instead.
 func DefaultConfig(t dbType) (err error) {
 	cfg, err := NewConfig(t)
 	config = *cfg
 	return
 }
 
-//Save saves a configuration to the package level config. Use this in conjunction with
-//New...Config(), or just sqldb.Config{}, when you want to heavily customize the
-//config. This is not a method on Config so that any modifications done to the original
-//config after Save() is called aren't propagated to the package level config without
-//calling Save() again.
+// Save saves a configuration to the package level config. Use this in conjunction with
+// New...Config(), or just sqldb.Config{}, when you want to heavily customize the
+// config. This is not a method on Config so that any modifications done to the original
+// config after Save() is called aren't propagated to the package level config without
+// calling Save() again.
 func Save(cfg Config) {
 	config = cfg
 }
 
-//GetDefaultConfig returns the package level saved config.
+// GetDefaultConfig returns the package level saved config.
 func GetDefaultConfig() *Config {
 	return &config
 }
 
-//validate handles validation of a provided config. This is called in Connect().
+// validate handles validation of a provided config. This is called in Connect().
 func (cfg *Config) validate() (err error) {
 	//Sanitize.
 	cfg.SQLitePath = strings.TrimSpace(cfg.SQLitePath)
@@ -350,7 +351,7 @@ func (cfg *Config) validate() (err error) {
 		//We don't check PRAGMAs since they are just strings. We will return any
 		//errors when the database is connected to via Open().
 
-	case DBTypeMySQL, DBTypeMariaDB:
+	case DBTypeMySQL, DBTypeMariaDB, DBTypeMSSQL:
 		if cfg.Host == "" {
 			return ErrHostNotProvided
 		}
@@ -371,20 +372,20 @@ func (cfg *Config) validate() (err error) {
 	return
 }
 
-//buildConnectionString creates the string used to connect to a database. The
-//returned values is built for a specific database type since each type has different
-//parameters needed for the connection.
+// buildConnectionString creates the string used to connect to a database. The
+// returned values is built for a specific database type since each type has different
+// parameters needed for the connection.
 //
-//Note that when building the connection string for MySQL or MariaDB, we have to omit
-//the databasename if we are deploying the database, since, obviously, the database
-//does not exist yet. The database name is only appended to the connection string when
-//the database exists.
+// Note that when building the connection string for MySQL or MariaDB, we have to omit
+// the databasename if we are deploying the database, since, obviously, the database
+// does not exist yet. The database name is only appended to the connection string when
+// the database exists.
 //
-//When building a connection string for SQLite, we attempt to translate and listed
-//SQLitePragmas to the correct format based on the SQLite library in use and appending
-//these pragmas to the filepath. This is done since you can only reliably set pragmas
-//when first connecting to the SQLite database, not anytime afterward, due to connection
-//pooling and pragmas being set per-connection.
+// When building a connection string for SQLite, we attempt to translate and listed
+// SQLitePragmas to the correct format based on the SQLite library in use and appending
+// these pragmas to the filepath. This is done since you can only reliably set pragmas
+// when first connecting to the SQLite database, not anytime afterward, due to connection
+// pooling and pragmas being set per-connection.
 func (cfg *Config) buildConnectionString(deployingDB bool) (connString string) {
 	switch cfg.Type {
 	case DBTypeMariaDB, DBTypeMySQL:
@@ -415,6 +416,19 @@ func (cfg *Config) buildConnectionString(deployingDB bool) (connString string) {
 			// cfg.debugPrintln("sqldb.buildConnectionString", "Path With PRAGMAS:", connString)
 		}
 
+	case DBTypeMSSQL:
+		u := &url.URL{
+			Scheme: "sqlserver",
+			User:   url.UserPassword(cfg.User, cfg.Password),
+			Host:   net.JoinHostPort(cfg.Host, strconv.FormatUint(uint64(cfg.Port), 10)),
+		}
+
+		q := url.Values{}
+		q.Add("database", cfg.Name)
+		u.RawQuery = q.Encode()
+
+		connString = u.String()
+
 	default:
 		//we should never hit this since we already validated the config in validate().
 	}
@@ -422,7 +436,7 @@ func (cfg *Config) buildConnectionString(deployingDB bool) (connString string) {
 	return
 }
 
-//getDriver returns the Go sql driver used for the chosen database type.
+// getDriver returns the Go sql driver used for the chosen database type.
 func getDriver(t dbType) (driver string, err error) {
 	if err := t.valid(); err != nil {
 		return "", err
@@ -435,14 +449,17 @@ func getDriver(t dbType) (driver string, err error) {
 		//See sqlite subfiles based on library used. Correct driver is chosen based
 		//on build tags.
 		driver = sqliteDriverName
+
+	case DBTypeMSSQL:
+		driver = "mssql" //maybe sqlserver works too?
 	}
 
 	return
 }
 
-//Connect connects to the database. This sets the database driver in the config,
-//establishes the database connection, and saves the connection pool for use in making
-//queries. For SQLite this also runs any PRAGMA commands.
+// Connect connects to the database. This sets the database driver in the config,
+// establishes the database connection, and saves the connection pool for use in making
+// queries. For SQLite this also runs any PRAGMA commands.
 func (cfg *Config) Connect() (err error) {
 	//Make sure the connection isn't already established to prevent overwriting it.
 	//This forces users to call Close() first to prevent any incorrect db usage.
@@ -506,7 +523,7 @@ func (cfg *Config) Connect() (err error) {
 
 	//Diagnostic logging.
 	switch cfg.Type {
-	case DBTypeMySQL, DBTypeMariaDB:
+	case DBTypeMySQL, DBTypeMariaDB, DBTypeMSSQL:
 		cfg.debugPrintln("sqldb.Connect", "Connecting to database "+cfg.Name+" on "+cfg.Host+" with user "+cfg.User)
 	case DBTypeSQLite:
 		cfg.debugPrintln("sqldb.Connect", "Connecting to database "+cfg.SQLitePath+".")
@@ -516,23 +533,23 @@ func (cfg *Config) Connect() (err error) {
 	return
 }
 
-//Connect handles the connection to the database using the default package level
-//config.
+// Connect handles the connection to the database using the default package level
+// config.
 func Connect() (err error) {
 	return config.Connect()
 }
 
-//Close closes the connection to the database.
+// Close closes the connection to the database.
 func (cfg *Config) Close() (err error) {
 	return cfg.connection.Close()
 }
 
-//Close closes the connection using the default package level config.
+// Close closes the connection using the default package level config.
 func Close() (err error) {
 	return config.Close()
 }
 
-//Connected returns if the config represents an established connection to the database.
+// Connected returns if the config represents an established connection to the database.
 func (cfg *Config) Connected() bool {
 	//A connection has never been established.
 	if cfg.connection == nil {
@@ -544,6 +561,7 @@ func (cfg *Config) Connected() bool {
 	//don't set it to nil in Close() since that isn't how the sql package handles
 	//closing.
 	err := cfg.connection.Ping()
+	//lint:ignore S1008 - I like the "if {return...}" format better than "return err == nil".
 	if err != nil {
 		return false
 	}
@@ -552,49 +570,49 @@ func (cfg *Config) Connected() bool {
 	return true
 }
 
-//Connected returns if the config represents an established connection to the database.
+// Connected returns if the config represents an established connection to the database.
 func Connected() bool {
 	return config.Connected()
 }
 
-//Connection returns the database connection stored in a config for use in running
-//queries.
+// Connection returns the database connection stored in a config for use in running
+// queries.
 func (cfg *Config) Connection() *sqlx.DB {
 	return cfg.connection
 }
 
-//Connection returns the database connection for the package level config.
+// Connection returns the database connection for the package level config.
 func Connection() *sqlx.DB {
 	return config.Connection()
 }
 
-//IsMySQLOrMariaDB returns if the database is a MySQL or MariaDB. This is useful
-//since MariaDB is a fork of MySQL and most things are compatible; this way you
-//don't need to check IsMySQL() and IsMariaDB().
+// IsMySQLOrMariaDB returns if the database is a MySQL or MariaDB. This is useful
+// since MariaDB is a fork of MySQL and most things are compatible; this way you
+// don't need to check IsMySQL() and IsMariaDB().
 func (cfg *Config) IsMySQLOrMariaDB() bool {
 	return cfg.Type == DBTypeMySQL || cfg.Type == DBTypeMariaDB
 }
 
-//IsMySQLOrMariaDB returns if the database is a MySQL or MariaDB for the package
-//level config.
+// IsMySQLOrMariaDB returns if the database is a MySQL or MariaDB for the package
+// level config.
 func IsMySQLOrMariaDB() bool {
 	return config.IsMySQLOrMariaDB()
 }
 
-//DefaultMapperFunc is the default MapperFunc set on configs. It returns the column
-//names unmodified.
+// DefaultMapperFunc is the default MapperFunc set on configs. It returns the column
+// names unmodified.
 func DefaultMapperFunc(s string) string {
 	return s
 }
 
-//MapperFunc sets the mapper func for the package level config.
+// MapperFunc sets the mapper func for the package level config.
 func MapperFunc(m func(string) string) {
 	config.MapperFunc = m
 }
 
-//println performs log.Println if Debug is true for the config. This is just a helper
-//func to remove the need for checking if Debug == true every time we want to log out
-//debugging information.
+// println performs log.Println if Debug is true for the config. This is just a helper
+// func to remove the need for checking if Debug == true every time we want to log out
+// debugging information.
 func (cfg *Config) debugPrintln(v ...any) {
 	if cfg.Debug {
 		log.Println(v...)
