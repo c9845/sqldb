@@ -409,10 +409,11 @@ func (cfg *Config) buildConnectionString(deployingDB bool) (connString string) {
 		//For SQLite, the connection string is simply a path to a file. However, we
 		//need to append pragmas as needed.
 		if len(cfg.SQLitePragmas) != 0 {
-			pragmasToAdd := buildPragmaString(cfg.SQLitePragmas)
+			pragmasToAdd := cfg.SQLitePragmasAsString()
 			connString += pragmasToAdd
 
-			cfg.debugPrintln("sqldb.buildConnectionString", "PRAGMA String:", pragmasToAdd)
+			//Logging for development debugging.
+			// cfg.debugPrintln("sqldb.buildConnectionString", "PRAGMA String:", pragmasToAdd)
 			// cfg.debugPrintln("sqldb.buildConnectionString", "Path With PRAGMAS:", connString)
 		}
 
@@ -527,7 +528,10 @@ func (cfg *Config) Connect() (err error) {
 		cfg.debugPrintln("sqldb.Connect", "Connecting to database "+cfg.Name+" on "+cfg.Host+" with user "+cfg.User)
 	case DBTypeSQLite:
 		cfg.debugPrintln("sqldb.Connect", "Connecting to database "+cfg.SQLitePath+".")
-		cfg.debugPrintln("sqldb.Connect", "Using SQLite Library "+GetSQLiteLibrary()+".")
+		cfg.debugPrintln("sqldb.Connect", "SQLite Library: "+GetSQLiteLibrary()+".")
+		cfg.debugPrintln("sqldb.Connect", "PRAGMAS: "+cfg.SQLitePragmasAsString()+".")
+	default:
+		//this can never happen since we hardcode the supported sqlite libraries.
 	}
 
 	return

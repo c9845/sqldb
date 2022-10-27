@@ -99,18 +99,18 @@ func GetSQLiteLibrary() string {
 	return sqliteLibrary
 }
 
-// buildPragmaString builds the string of pragmas that should be appended to the filename
-// when connecting to a SQLite database. This is needed to set pragmas reliably since
-// pragmas must be set upon initially connecting to the database. The difficulty in
-// setting pragmas is that each SQLite library (mattn vs modernc) has a slighly different
-// format for setting pragmas. This takes the list of pragmas in SQLite query format (
-// PRAGMA busy_timeout = 5000) and translates them to the correct format for the SQLite
-// library in use.
-func buildPragmaString(pragmas []string) (filenamePragmaString string) {
+// SQLitePragmasAsString builds the string of pragmas that should be appended to the
+// filename when connecting to a SQLite database. This is needed to set pragmas reliably
+// since pragmas must be set upon initially connecting to the database. The difficulty
+// in setting pragmas is that each SQLite library (mattn vs modernc) has a slighly
+// different format for setting pragmas. This takes the list of pragmas in SQLite query
+// format (PRAGMA busy_timeout = 5000) and translates them to the correct format for
+// the SQLite library in use.
+func (cfg *Config) SQLitePragmasAsString() (filenamePragmaString string) {
 	v := url.Values{}
 
-	for _, p := range pragmas {
-		//Sanitize, make replace/stripping of "PRAGMA" keyword easier.
+	for _, p := range cfg.SQLitePragmas {
+		//Sanitize, to make replace/stripping of "PRAGMA" keyword easier.
 		p = strings.ToLower(p)
 
 		//Strip out the PRAGMA keyword.
@@ -144,7 +144,7 @@ func buildPragmaString(pragmas []string) (filenamePragmaString string) {
 			//add
 			v.Add(key, value)
 		default:
-			//this can never happen since we hardcode libraries.
+			//this can never happen since we hardcode the supported sqlite libraries.
 		}
 	}
 

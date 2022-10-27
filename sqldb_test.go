@@ -974,13 +974,15 @@ func TestString(t *testing.T) {
 	}
 }
 
-func TestBuildPragmaString(t *testing.T) {
+func TestSQLitePragmasAsString(t *testing.T) {
 	p := []string{
 		"PRAGMA journal_mode = WAL",
 		"PRAGMA busy_timeout = 5000",
 	}
+	cfg := NewSQLiteConfig("")
+	cfg.SQLitePragmas = p
 
-	built := buildPragmaString(p)
+	built := cfg.SQLitePragmasAsString()
 
 	u, err := url.ParseQuery(built)
 	if err != nil {
