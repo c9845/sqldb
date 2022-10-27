@@ -529,7 +529,7 @@ func (cfg *Config) Connect() (err error) {
 	case DBTypeSQLite:
 		cfg.debugPrintln("sqldb.Connect", "Connecting to database "+cfg.SQLitePath+".")
 		cfg.debugPrintln("sqldb.Connect", "SQLite Library: "+GetSQLiteLibrary()+".")
-		cfg.debugPrintln("sqldb.Connect", "PRAGMAS: "+cfg.SQLitePragmasAsString()+".")
+		cfg.debugPrintln("sqldb.Connect", "PRAGMAs: "+cfg.SQLitePragmasAsString()+".")
 	default:
 		//this can never happen since we hardcode the supported sqlite libraries.
 	}
