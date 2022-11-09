@@ -126,6 +126,11 @@ type Config struct {
 	User     string
 	Password string
 
+	//ConnectionOptions is a list of key-value pairs of options used when building
+	//the connection string used to connect to a database. Each driver/database type
+	//will handle these differently.
+	ConnectionOptions map[string]string
+
 	//SQLitePath is the path where the SQLite database file is located.
 	SQLitePath string
 
@@ -432,6 +437,14 @@ func (cfg *Config) buildConnectionString(deployingDB bool) (connString string) {
 
 		q := url.Values{}
 		q.Add("database", cfg.Name)
+
+		//Handle other connection options.
+		if len(cfg.ConnectionOptions) > 0 {
+			for key, value := range cfg.ConnectionOptions {
+				q.Add(key, value)
+			}
+		}
+
 		u.RawQuery = q.Encode()
 
 		connString = u.String()
