@@ -100,9 +100,15 @@ import (
 	"strconv"
 	"strings"
 
-	//MySQL and MariaDB import is not an empty import b/c we use it to generate the connection string.
-	//SQlite is imported in other sqldb-sqlite-*.go files due to different libraries & build tags.
+	//MySQL and MariaDB driver import is not an empty import b/c we use it the driver
+	//library to generate the connection string.
 	"github.com/go-sql-driver/mysql"
+
+	//SQLite driver is imported in other sqldb-sqlite-*.go files due to different
+	//libraries & build tags.
+
+	//MS SQL Server.
+	_ "github.com/denisenkom/go-mssqldb"
 
 	"github.com/jmoiron/sqlx"
 	"golang.org/x/exp/slices"
