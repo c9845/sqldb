@@ -5,8 +5,16 @@ const defaultMSSQLPort uint = 1433
 
 // NewMSSQLConfig returns a config for connecting to a Microsoft SQL Server database.
 func NewMSSQLConfig(host string, port uint, name, user, password string) (cfg *Config) {
-	cfg = NewMySQLConfig(host, port, name, user, password)
-	cfg.Type = DBTypeMSSQL
+	//The returned error can be ignored since it only returns if a bad db type is
+	//provided but we are providing a known-good db type.
+	cfg, _ = NewConfig(DBTypeMSSQL)
+
+	cfg.Host = host
+	cfg.Port = port
+	cfg.Name = name
+	cfg.User = user
+	cfg.Password = password
+
 	return
 }
 
