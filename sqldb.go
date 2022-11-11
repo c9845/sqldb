@@ -128,7 +128,8 @@ type Config struct {
 
 	//ConnectionOptions is a list of key-value pairs of options used when building
 	//the connection string used to connect to a database. Each driver/database type
-	//will handle these differently.
+	//will handle these differently. Use AddConnectionOption() instead of having to
+	//do Config.ConnectionOptions = map[string]string{"key", "value"}.
 	ConnectionOptions map[string]string
 
 	//SQLitePath is the path where the SQLite database file is located.
@@ -640,4 +641,23 @@ func (cfg *Config) debugPrintln(v ...any) {
 	if cfg.Debug {
 		log.Println(v...)
 	}
+}
+
+// AddConnectionOption adds a key-value pair to a config's ConnnectionOptions field.
+// Using this func is just easier then calling map[string]string{"key", "value"}. This
+// does not check if the key already exist, it will simply add a duplicate key-value
+// pair.
+func (cfg *Config) AddConnectionOption(key, value string) {
+	//Initialize map if needed.
+	if cfg.ConnectionOptions == nil {
+		cfg.ConnectionOptions = make(map[string]string)
+	}
+
+	cfg.ConnectionOptions[key] = value
+}
+
+// AddConnectionOption adds a key-value pair to the ConnectionOptions field for the
+// package level config.
+func AddConnectionOption(key, value string) {
+	config.AddConnectionOption(key, value)
 }

@@ -15,6 +15,8 @@ func NewMSSQLConfig(host string, port uint, name, user, password string) (cfg *C
 	cfg.User = user
 	cfg.Password = password
 
+	cfg.ConnectionOptions = make(map[string]string)
+
 	return
 }
 

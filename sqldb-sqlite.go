@@ -44,6 +44,8 @@ func NewSQLiteConfig(pathToFile string) (cfg *Config) {
 		TFMySQLToSQLiteReformatDatetime,
 	}
 
+	cfg.ConnectionOptions = make(map[string]string)
+
 	return
 }
 

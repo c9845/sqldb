@@ -1024,3 +1024,24 @@ func TestSQLitePragmasAsString(t *testing.T) {
 		}
 	}
 }
+
+func TestAddConnectionOption(t *testing.T) {
+	//Get config to work off of.
+	c := NewSQLiteConfig(InMemoryFilePathRaceSafe)
+
+	//Add option.
+	k := "key"
+	v := "value"
+	c.AddConnectionOption(k, v)
+
+	//Make sure connection option was saved.
+	vFound, ok := c.ConnectionOptions[k]
+	if !ok {
+		t.Fatal("Could not find key in connection options.")
+		return
+	}
+	if vFound != v {
+		t.Fatal("Connection option value mismatch.", vFound, v)
+		return
+	}
+}
