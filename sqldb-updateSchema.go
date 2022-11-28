@@ -85,6 +85,10 @@ func (cfg *Config) UpdateSchemaWithOps(ops UpdateSchemaOptions) (err error) {
 		//CREATE TABLE in the text.
 		q = cfg.runTranslateCreateTableFuncs(q)
 
+		//Translate th query if needed. These translation funcs only affect db schema
+		//updates (i.e.: the Update() func was used.
+		q = cfg.runTranslateUpdateFuncs(q)
+
 		//Log out some info about the query being run for diagnostics.
 		if strings.Contains(q, "CREATE TABLE") {
 			idx := strings.Index(q, "(")

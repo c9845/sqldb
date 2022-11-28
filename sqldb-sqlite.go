@@ -37,12 +37,7 @@ func NewSQLiteConfig(pathToFile string) (cfg *Config) {
 
 	cfg.SQLitePath = pathToFile
 	cfg.SQLitePragmas = sqliteDefaultPragmas
-	cfg.TranslateCreateTableFuncs = []func(string) string{
-		TFMySQLToSQLiteReformatID,
-		TFMySQLToSQLiteRemovePrimaryKeyDefinition,
-		TFMySQLToSQLiteReformatDefaultTimestamp,
-		TFMySQLToSQLiteReformatDatetime,
-	}
+	cfg.UseDefaultTranslateFuncs()
 
 	cfg.ConnectionOptions = make(map[string]string)
 

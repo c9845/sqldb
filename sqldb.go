@@ -210,6 +210,11 @@ type Config struct {
 	//TF...
 	TranslateCreateTableFuncs []func(string) string
 
+	//TranslateUpdateFuncs is a list of functions run against each UpdateQuery that
+	//modifies the query to translate it from one database format to another. See
+	//TranslateCreateTableFuncs for more info.
+	TranslateUpdateFuncs []func(string) string
+
 	//Debug turns on diagnostic logging.
 	Debug bool
 
@@ -660,4 +665,26 @@ func (cfg *Config) AddConnectionOption(key, value string) {
 // package level config.
 func AddConnectionOption(key, value string) {
 	config.AddConnectionOption(key, value)
+}
+
+// UseDefaultTranslateFuncs populates TranslateCreateTableFuncs and TranslateUpdateFuncs
+// with the default translation funcs.
+func (cfg *Config) UseDefaultTranslateFuncs() {
+	if cfg.IsSQLite() {
+		cfg.TranslateCreateTableFuncs = []func(string) string{
+			TFMySQLToSQLiteReformatID,
+			TFMySQLToSQLiteRemovePrimaryKeyDefinition,
+			TFMySQLToSQLiteReformatDefaultTimestamp,
+			TFMySQLToSQLiteReformatDatetime,
+		}
+		cfg.TranslateUpdateFuncs = []func(string) string{
+			TFMySQLToSQLiteBLOB,
+		}
+	}
+}
+
+// UseDefaultTranslateFuncs populates TranslateCreateTableFuncs and TranslateUpdateFuncs
+// with the default translation funcs for the package level config.
+func UseDefaultTranslateFuncs() {
+	config.UseDefaultTranslateFuncs()
 }
