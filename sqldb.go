@@ -93,7 +93,6 @@ package sqldb
 import (
 	"errors"
 	"fmt"
-	"log"
 	"net"
 	"net/url"
 	"os"
@@ -215,8 +214,8 @@ type Config struct {
 	//TranslateCreateTableFuncs for more info.
 	TranslateUpdateFuncs []func(string) string
 
-	//Debug turns on diagnostic logging.
-	Debug bool
+	//LoggingLevel enables logging at ERROR, INFO, or DEBUG levels.
+	LoggingLevel logLevel
 
 	//connection is the established connection to a database for performing queries.
 	//This is the underlying sql connection pool. Access this via the Connection()
@@ -241,8 +240,8 @@ var validDBTypes = []dbType{
 	DBTypeMSSQL,
 }
 
-// DBType returns a dbType. This is used when parsing a user-provided database type (such
-// as from a configuration file) to convert to a db type defined in this package.
+// DBType returns a dbType. This is used when parsing a user-provided database type
+// (such as from a configuration file) to convert to a db type defined in this package.
 func DBType(s string) dbType {
 	return dbType(s)
 }
@@ -257,6 +256,17 @@ func (t dbType) valid() error {
 
 	return fmt.Errorf("invalid db type, should be one of '%s', got '%s'", validDBTypes, t)
 }
+
+// Logging levels, each higher level is inclusive of lower levels; i.e.: if you choose
+// to use LogLevelDebug, all Error and Info logging will also be output.
+type logLevel int
+
+const (
+	LogLevelNone  logLevel = iota //no logging.
+	LogLevelError                 //general errors, most typical use/
+	LogLevelInfo                  //some info on db connections, deployment, updates.
+	LogLevelDebug                 //primarily development related.
+)
 
 // errors
 var (
@@ -296,6 +306,9 @@ var (
 	//Extra commas are usually due to an empty column name being provided or a comma
 	//being added to the column name by mistake.
 	ErrExtraCommaInColumnString = errors.New("sqldb: extra comma in column name")
+
+	//ErrInvalidLoggingLevel is returned when an invalid logging level is provided.
+	ErrInvalidLoggingLevel = errors.New("sqldb: invalid logging level")
 )
 
 // config is the package level saved config. This stores your config when you want to
@@ -314,8 +327,10 @@ func NewConfig(t dbType) (cfg *Config, err error) {
 	}
 
 	cfg = &Config{
-		Type:       t,
-		MapperFunc: DefaultMapperFunc,
+		Type:              t,
+		MapperFunc:        DefaultMapperFunc,
+		LoggingLevel:      LogLevelInfo,
+		ConnectionOptions: make(map[string]string),
 	}
 	return
 }
@@ -386,6 +401,11 @@ func (cfg *Config) validate() (err error) {
 		}
 	}
 
+	//Make sure logging level is a valid type if something was provided.
+	if cfg.LoggingLevel < LogLevelNone || cfg.LoggingLevel > LogLevelDebug {
+		return ErrInvalidLoggingLevel
+	}
+
 	return
 }
 
@@ -429,9 +449,8 @@ func (cfg *Config) buildConnectionString(deployingDB bool) (connString string) {
 			pragmasToAdd := cfg.SQLitePragmasAsString()
 			connString += pragmasToAdd
 
-			//Logging for development debugging.
-			// cfg.debugPrintln("sqldb.buildConnectionString", "PRAGMA String:", pragmasToAdd)
-			// cfg.debugPrintln("sqldb.buildConnectionString", "Path With PRAGMAS:", connString)
+			cfg.debugPrintln("sqldb.buildConnectionString", "PRAGMA String:", pragmasToAdd)
+			cfg.debugPrintln("sqldb.buildConnectionString", "Path With PRAGMAS:", connString)
 		}
 
 	case DBTypeMSSQL:
@@ -452,11 +471,11 @@ func (cfg *Config) buildConnectionString(deployingDB bool) (connString string) {
 		}
 
 		u.RawQuery = q.Encode()
-
 		connString = u.String()
 
 	default:
-		//we should never hit this since we already validated the config in validate().
+		//we should never hit this since we already validated the db type in in
+		//validate().
 	}
 
 	return
@@ -483,9 +502,9 @@ func getDriver(t dbType) (driver string, err error) {
 	return
 }
 
-// Connect connects to the database. This sets the database driver in the config,
-// establishes the database connection, and saves the connection pool for use in making
-// queries. For SQLite this also runs any PRAGMA commands.
+// Connect connects to the database. This establishes the database connection, and
+// saves the connection pool for use in running queries. For SQLite this also runs any
+// PRAGMA commands.
 func (cfg *Config) Connect() (err error) {
 	//Make sure the connection isn't already established to prevent overwriting it.
 	//This forces users to call Close() first to prevent any incorrect db usage.
@@ -511,6 +530,7 @@ func (cfg *Config) Connect() (err error) {
 	driver, _ := getDriver(cfg.Type)
 
 	//Connect to the database.
+	//
 	//For SQLite, check if the database file exists. This func will not create the
 	//database file. The database file needs to be created first with Deploy(). If
 	//the database is in-memory, we can ignore this error.
@@ -539,7 +559,7 @@ func (cfg *Config) Connect() (err error) {
 		return
 	}
 
-	//Set the mapper for mapping column names to struct fields.
+	//Set the mapper func for mapping column names to struct fields.
 	if cfg.MapperFunc != nil {
 		conn.MapperFunc(cfg.MapperFunc)
 	}
@@ -550,11 +570,11 @@ func (cfg *Config) Connect() (err error) {
 	//Diagnostic logging.
 	switch cfg.Type {
 	case DBTypeMySQL, DBTypeMariaDB, DBTypeMSSQL:
-		cfg.debugPrintln("sqldb.Connect", "Connecting to database "+cfg.Name+" on "+cfg.Host+" with user "+cfg.User)
+		cfg.infoPrintln("sqldb.Connect", "Connecting to database "+cfg.Name+" on "+cfg.Host+" with user "+cfg.User+".")
 	case DBTypeSQLite:
-		cfg.debugPrintln("sqldb.Connect", "Connecting to database "+cfg.SQLitePath+".")
-		cfg.debugPrintln("sqldb.Connect", "SQLite Library: "+GetSQLiteLibrary()+".")
-		cfg.debugPrintln("sqldb.Connect", "PRAGMAs: "+cfg.SQLitePragmasAsString()+".")
+		cfg.infoPrintln("sqldb.Connect", "Connecting to database: "+cfg.SQLitePath+".")
+		cfg.infoPrintln("sqldb.Connect", "SQLite Library: "+GetSQLiteLibrary()+".")
+		cfg.infoPrintln("sqldb.Connect", "SQLite PRAGMAs: "+cfg.SQLitePragmasAsString()+".")
 	default:
 		//this can never happen since we hardcode the supported sqlite libraries.
 	}
@@ -637,15 +657,6 @@ func DefaultMapperFunc(s string) string {
 // MapperFunc sets the mapper func for the package level config.
 func MapperFunc(m func(string) string) {
 	config.MapperFunc = m
-}
-
-// println performs log.Println if Debug is true for the config. This is just a helper
-// func to remove the need for checking if Debug == true every time we want to log out
-// debugging information.
-func (cfg *Config) debugPrintln(v ...any) {
-	if cfg.Debug {
-		log.Println(v...)
-	}
 }
 
 // AddConnectionOption adds a key-value pair to a config's ConnnectionOptions field.
