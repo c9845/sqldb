@@ -687,6 +687,7 @@ func (cfg *Config) UseDefaultTranslateFuncs() {
 			TFMySQLToSQLiteRemovePrimaryKeyDefinition,
 			TFMySQLToSQLiteReformatDefaultTimestamp,
 			TFMySQLToSQLiteReformatDatetime,
+			TFMySQLToSQLiteBLOB,
 		}
 		cfg.TranslateUpdateFuncs = []func(string) string{
 			TFMySQLToSQLiteBLOB,
