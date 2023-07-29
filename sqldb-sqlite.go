@@ -39,8 +39,6 @@ func NewSQLiteConfig(pathToFile string) (cfg *Config) {
 	cfg.SQLitePragmas = sqliteDefaultPragmas
 	cfg.UseDefaultTranslateFuncs()
 
-	cfg.ConnectionOptions = make(map[string]string)
-
 	return
 }
 

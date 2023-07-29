@@ -79,7 +79,7 @@ func (cfg *Config) UpdateSchemaWithOps(ops UpdateSchemaOptions) (err error) {
 	defer tx.Rollback()
 
 	//Run each update query.
-	cfg.debugPrintln("sqldb.UpdateSchema", "Running UpdateQueries...")
+	cfg.infoPrintln("sqldb.UpdateSchema", "Running UpdateQueries...")
 	for _, q := range cfg.UpdateQueries {
 		//Translate the query if needed. This will only translate queries with
 		//CREATE TABLE in the text.
@@ -93,10 +93,10 @@ func (cfg *Config) UpdateSchemaWithOps(ops UpdateSchemaOptions) (err error) {
 		if strings.Contains(q, "CREATE TABLE") {
 			idx := strings.Index(q, "(")
 			if idx > 0 {
-				cfg.debugPrintln(strings.TrimSpace(q[:idx]) + "...")
+				cfg.infoPrintln(strings.TrimSpace(q[:idx]) + "...")
 			}
 		} else {
-			cfg.debugPrintln(q)
+			cfg.infoPrintln(q)
 		}
 
 		//Execute the query. Always log on error so users can identify query that has
@@ -109,29 +109,29 @@ func (cfg *Config) UpdateSchemaWithOps(ops UpdateSchemaOptions) (err error) {
 			return
 		}
 	}
-	cfg.debugPrintln("sqldb.UpdateSchema", "Running UpdateQueries...done")
+	cfg.infoPrintln("sqldb.UpdateSchema", "Running UpdateQueries...done")
 
 	//Run each update func.
-	cfg.debugPrintln("sqldb.UpdateSchema", "Running UpdateFuncs...")
+	cfg.infoPrintln("sqldb.UpdateSchema", "Running UpdateFuncs...")
 	for _, f := range cfg.UpdateFuncs {
 		//Get function name for diagnostics.
 		rawNameWithPath := runtime.FuncForPC(reflect.ValueOf(f).Pointer()).Name()
 		funcName := path.Base(rawNameWithPath)
 
 		//Log out some info about the func being run for diagnostics.
-		cfg.debugPrintln(funcName)
+		cfg.infoPrintln(funcName)
 
 		//Execute the func. Always log on error so users can identify func that has
 		//an error. Connection always gets closed since an error occured.
 		innerErr := f(tx)
 		if innerErr != nil {
 			err = innerErr
-			log.Println("sqldb.UpdateSchema()", "Error with func.", funcName)
+			cfg.errorPrintln("sqldb.UpdateSchema", "Error with UpdateFunc.", funcName)
 			cfg.Close()
 			return innerErr
 		}
 	}
-	cfg.debugPrintln("sqldb.UpdateSchema", "Running UpdateFuncs...done")
+	cfg.infoPrintln("sqldb.UpdateSchema", "Running UpdateFuncs...done")
 
 	//Commit transaction now that all UpdateQueries have been run successfully.
 	err = tx.Commit()
@@ -140,8 +140,11 @@ func (cfg *Config) UpdateSchemaWithOps(ops UpdateSchemaOptions) (err error) {
 		return
 	}
 
+	//Close the connection to the database, if needed. We want to keep the connection
+	//open mostly for tests since tests might use an in-memory database (SQLite) and
+	//if the connection is closed the database gets wiped away.
 	if ops.CloseConnection {
-		//Close() is handled by defer above.
+		cfg.Close()
 		cfg.debugPrintln("sqldb.UpdateSchama", "Connection closed after success.")
 	} else {
 		cfg.debugPrintln("sqldb.UpdateSchama", "Connection left open after success.")
@@ -172,13 +175,13 @@ func UpdateSchema() (err error) {
 }
 
 // ignoreUpdateSchemaErrors handles when an error is returned from an UpdateQuery when
-// run from UpdateSchema(). This is used to handle queries that can fail and aren't really
-// an error (i.e.: adding a column that already exists). Excusable errors can happen
-// because UpdateQueries should be able to run more than once (i.e.: if you run UpdateSchema()
-// each time your app starts).
+// run from UpdateSchema(). This is used to handle queries that can fail and aren't
+// really an error (i.e.: adding a column that already exists). Excusable errors can
+// happen because UpdateQueries should be able to run more than once (i.e.: if you run
+// UpdateSchema() each time your app starts).
 //
-// The query to update the schema is passed in so that we can check what an error is in
-// relation to. Sometimes the error returned doesn't provide enough context.
+// The query to update the schema is passed in so that we can check what an error is
+// in relation to. Sometimes the error returned doesn't provide enough context.
 func (cfg *Config) ignoreUpdateSchemaErrors(query string, err error) bool {
 	//make sure an error was provided
 	if err == nil {
@@ -199,17 +202,17 @@ func (cfg *Config) ignoreUpdateSchemaErrors(query string, err error) bool {
 }
 
 // UpdateIgnoreErrorFunc is function for handling errors returned when trying to update
-// the schema of your database using UpdateSchema(). The query being run, as well as the
-// error from running the query, are passed in so that the function can determine if this
-// error can be ignored for this query. Each function of this type, and used for this
-// purpose should be very narrowly focused so as not to ignore errors by mistake (false
-// positives).
+// the schema of your database using UpdateSchema(). The query being run, as well as
+// the error from running the query, are passed in so that the function can determine
+// if this error can be ignored for this query. Each function of this type, and used
+// for this purpose should be very narrowly focused so as not to ignore errors by
+// mistake (false positives).
 type UpdateIgnoreErrorFunc func(Config, string, error) bool
 
-// UFAddDuplicateColumn checks if an error was generated because a column already exists.
-// This typically happens because you are rerunning UpdateSchema() and the column has
-// already been added. This error can be safely ignored since a duplicate column won't
-// be create.
+// UFAddDuplicateColumn checks if an error was generated because a column already
+// exists. This typically happens because you are rerunning UpdateSchema() and the
+// column has already been added. This error can be safely ignored since a duplicate
+// column won't be create.
 func UFAddDuplicateColumn(c Config, query string, err error) bool {
 	addCol := strings.Contains(strings.ToUpper(query), "ADD COLUMN")
 	dup := strings.Contains(strings.ToLower(err.Error()), "duplicate column")
@@ -222,9 +225,9 @@ func UFAddDuplicateColumn(c Config, query string, err error) bool {
 	return false
 }
 
-// UFDropUnknownColumn checks if an error from was generated because a column does not exist.
-// This typically happens because you are rerunning UpdateSchema() and the column has
-// already been dropped. This error can be safely ignored in most cases.
+// UFDropUnknownColumn checks if an error from was generated because a column does not
+// exist. This typically happens because you are rerunning UpdateSchema() and the
+// column has already been dropped. This error can be safely ignored in most cases.
 func UFDropUnknownColumn(c Config, query string, err error) bool {
 	dropCol := strings.Contains(strings.ToUpper(query), "DROP COLUMN")
 
@@ -244,12 +247,12 @@ func UFDropUnknownColumn(c Config, query string, err error) bool {
 
 // UFModifySQLiteColumn checks if an error occured because you are trying to modify a
 // column for a SQLite database. SQLite does not allow modifying columns. In this case,
-// we just ignore the error. This is ok since SQLite allows you to store any type of value
-// in any column.
+// we just ignore the error. This is ok since SQLite allows you to store any type of
+// value in any column.
 //
-// To get around this error, you should create a new table with the new schema, copy the
-// old data to the new table, delete the old table, and rename the new table to the old
-// table.
+// To get around this error, you should create a new table with the new schema, copy
+// the old data to the new table, delete the old table, and rename the new table to
+// the old table.
 func UFModifySQLiteColumn(c Config, query string, err error) bool {
 	//ignore queries that modify a column for sqlite dbs
 	if strings.Contains(strings.ToUpper(query), "MODIFY COLUMN") && c.Type == DBTypeSQLite {

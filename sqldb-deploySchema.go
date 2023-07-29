@@ -110,7 +110,7 @@ func (cfg *Config) DeploySchemaWithOps(ops DeploySchemaOptions) (err error) {
 	connection := cfg.Connection()
 
 	//Run each deploy query.
-	cfg.debugPrintln("sqldb.DeploySchema", "Running DeployQueries...")
+	cfg.infoPrintln("sqldb.DeploySchema", "Running DeployQueries...")
 	for _, q := range cfg.DeployQueries {
 		//Translate the query if needed. This will only translate queries with
 		//CREATE TABLE in the text.
@@ -120,10 +120,10 @@ func (cfg *Config) DeploySchemaWithOps(ops DeploySchemaOptions) (err error) {
 		if strings.Contains(q, "CREATE TABLE") {
 			idx := strings.Index(q, "(")
 			if idx > 0 {
-				cfg.debugPrintln(strings.TrimSpace(q[:idx]) + "...")
+				cfg.infoPrintln(strings.TrimSpace(q[:idx]) + "...")
 			}
 		} else {
-			cfg.debugPrintln(q)
+			cfg.infoPrintln(q)
 		}
 
 		//Execute the query. Always log on error so users can identify query that has
@@ -136,35 +136,38 @@ func (cfg *Config) DeploySchemaWithOps(ops DeploySchemaOptions) (err error) {
 			return
 		}
 	}
-	cfg.debugPrintln("sqldb.DeploySchema", "Running DeployQueries...done")
+	cfg.infoPrintln("sqldb.DeploySchema", "Running DeployQueries...done")
 
 	//Run each deploy func.
-	cfg.debugPrintln("sqldb.DeploySchema", "Running DeployFuncs...")
+	cfg.infoPrintln("sqldb.DeploySchema", "Running DeployFuncs...")
 	for _, f := range cfg.DeployFuncs {
 		//Get function name for diagnostics.
 		rawNameWithPath := runtime.FuncForPC(reflect.ValueOf(f).Pointer()).Name()
 		funcName := path.Base(rawNameWithPath)
 
 		//Log out some info about the func being run for diagnostics.
-		cfg.debugPrintln(funcName)
+		cfg.infoPrintln(funcName)
 
 		//Execute the func. Always log on error so users can identify func that has
 		//an error. Connection always gets closed since an error occured.
 		innerErr := f(connection)
 		if innerErr != nil {
 			err = innerErr
-			log.Println("sqldb.DeploySchema()", "Error with func.", funcName)
+			cfg.errorPrintln("sqldb.DeploySchema", "Error with DeployFunc.", funcName)
 			cfg.Close()
 			return innerErr
 		}
 	}
-	cfg.debugPrintln("sqldb.DeploySchema", "Running DeployFuncs...done")
+	cfg.infoPrintln("sqldb.DeploySchema", "Running DeployFuncs...done")
 
+	//Close the connection to the database, if needed. We want to keep the connection
+	//open mostly for tests since tests might use an in-memory database (SQLite) and
+	//if the connection is closed the database gets wiped away.
 	if ops.CloseConnection {
-		//Close() is handled by defer above.
-		cfg.debugPrintln("sqldb.DeploySchema()", "Connection closed after success.")
+		cfg.Close()
+		cfg.debugPrintln("sqldb.DeploySchema", "Connection closed after success.")
 	} else {
-		cfg.debugPrintln("sqldb.DeploySchema()", "Connection left open after success.")
+		cfg.debugPrintln("sqldb.DeploySchema", "Connection left open after success.")
 	}
 
 	return
