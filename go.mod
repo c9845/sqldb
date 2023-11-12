@@ -1,6 +1,6 @@
 module github.com/c9845/sqldb/v2
 
-go 1.18
+go 1.21
 
 require (
 	github.com/denisenkom/go-mssqldb v0.12.3

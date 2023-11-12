@@ -1,62 +1,70 @@
 /*
-Package sqldb provides some tooling to make connecting to, deploying, updating, and
-using a SQL database easier. This provides some wrapping around the sql package. This
-package was written to reduce the amount of boilerplate code to connect, deploy, or
-update a database.
+Package sqldb provides tooling to make connecting to, deploying, updating, and using
+a SQL database easier. This provides some wrapping around the [database/sql] package.
 
-NOTE! Microsoft SQL Server support is very untested!
+The initial reasoning behind this package was to encapsulate commonly used sql
+database connection, schema deploying and updating, and other boilerplate tasks so
+that I did not have to update near-identical code in a large amount of projects. For
+example, if I found a bug in the sql related code, I did not want to have to update
+the same code in 30 different projects.
+
+NOTE! Microsoft SQL Server is not fully tested!
 
 # Global or Local DB Connection
 
-You can use this package in two methods: as a singleton with the database configuration
-and connection stored in a package-level globally-accessible variable, or store the
-configuration and connection somewhere else in your application. Storing the data
+You can use this package in two methods: as a singleton a the database configuration
+and connection stored within this package in a globally accessible variable, or store
+the configuration and connection somewhere else in your application. Storing the data
 yourself allows for connecting to multiple databases at once.
 
 # Deploying a Database
 
-Deploying of a schema is done via queries stored in your configuration's DeployQueries
-and DeployFuncs fields. These queries and funcs are run when DeploySchema() is called.
-DeploySchema() will create the database, if needed, before deploying tables, creating
-indexes, inserting initial data, etc. Each DeployQuery is run before the DeployFuncs.
+Deploying of a schema is done via DeployQueries and DeployFuncs, along with the
+associated DeployQueryTranslators and DeployQueryErrorHandlers. DeployQueries are
+just SQL query strings while DeployFuncs are used for more complicated deployment
+scenarios, such as INSERTs that rely on some sort of non-SQL data (ex: data
+calculated by golang code in your application). Use this for CREATE TABLE, CREATE
+INDEX, or INSERTing initial data.
 
-DeployQueries are typically used for creating tables or indexes. DeployFuncs are
-typically used for more complex operations such as inserting initial data only if no
-data already exists or handling a complicated schema change based on existing values.
-When writing DeployQueries or DeployFuncs you should ensure the result of each is
-indempotent; rerunning DeployQueries or DeployFuncs over and over should be successful
-without returning errors about "already exists" or creating or inserting duplicate
-records.
+DeployQueryTranslators translate DeployQueries from one database type to another
+(ex: MariaDB to SQLite) since different databases support slightly different
+SQL dialects. This allows you to write your CREATE TABLE or other deployment
+related queries in one database type's format, but then modify the query
+programatically to the format required for another database type. This is extremely
+useful if your application supports using multiple database tables. Note that
+DeployQueryTranslators do not apply to DeployFuncs since DeployFuncs are more than
+just a SQL query.
 
-An advanced tool of deployment is TranslateDeployCreateTableFuncs. Funcs listed here
-are used to translate a CREATE TABLE query from one database format to another (i.e.:
-MySQL to SQLite). This allows you to write your CREATE TABLE queries in one database
-format but allow running your application with a database deployed in multiple formats;
-it just makes writing CREATE TABLE queries a bit easier. This translation is necessary
-since different databases have different CREATE TABLE query formats or column types (
-for example, SQLite doesn't really have VARCHAR). Each DeployQuery is run through each
-TranslateDeployCreateTableFunc with translation of the query performed as needed.
+DeployQueryErrorHandlers is a list of functions that are run when any DeployQuery
+results in an error (as returned by [sql.Exec]). These funcs are used to evaluate,
+and if appropriate, ignore the error. Use this for handling situations in the same
+manner as CREATE IF NOT EXISTS.
+
+DeployQueries and DeployFuncs should be safe to be rerun multiple times, particularly
+without INSERTing duplicate data. Use IF NOT EXISTS or check if something exists
+before INSERTing in DeployFuncs.
 
 # Updating a Schema
 
-Updating a database schema happens in a similar manner to deploying, a list of queries
-in UpdateQueries and UpdateFuncs is run against the database. All queries are run
-encapsulated in a single transaction so that either the updated is successful, or none
-of updates are applied. This is done to eliminate the possibility of a partial update.
+Updating an existing database schema is done via UpdateQueries and UpdateFuncs, along
+with the associated UpdateQueryTranslators and UpdateQueryErrorHandlers. These all
+function the same as the related deploy schema tooling.
 
-Each UpdateQuery is run through a list of error analyzer functions, UpdateIgnoreErrorFuncs,
-to determine if an error can be ignored. This is typically used to ignore errors for
-when you are adding a column that already exists, removing a column that is already
-removed, etc. These funcs just help ignore errors that aren't really errors.
+All updated related queries are run inside of the same transaction so if an error
+occurs the database does not end up in an unknown state. Either the entire schema
+update succeeds and is applied or none of the changes are applied.
+
+UpdateQueryErrorHandlers are very useful for handling queries that when run multiple
+times would result in an error, especially when the IF EXISTS syntax is not
+available (see SQLite for ALTER TABLE...DROP COLUMN).
 
 # SQLite Library
 
-This package support two SQLite libraries, mattn/go-sqlite3 and modernc/sqlite. The mattn
-library encapsulates the SQLite C source code and requires CGO for compilation which
-can be troublesome for cross-compiling. The modernc library is an automatic translation
-of the C source code to golang, however, it isn't the "source" SQLite C code and
-therefore doesn't have the same level of trustworthiness or extent of testing, however,
-it can be cross-compiled much more easily.
+This package support two SQLite libraries, [github.com/mattn/go-sqlite3] and
+[gitlab.com/cznic/sqlite]. The mattn library requires CGO which can be troublesome
+for cross-compiling. The modernc library is pure golang, however, it is a translation,
+not the original SQLite code, and therefore does not have the same level of
+trustworthiness or extent of testing.
 
 As of now, mattn is the default if no build tags are provided. This is simply due to
 the longer history of this library being available and the fact that this uses the
@@ -69,24 +77,18 @@ Use either library with build tags:
 	go run -tags mattn ...
 	go run -tags modernc ...
 
-The mattn/go-sqlite3 library sets some default PRAGMA values, as noted in the source code
-at https://github.com/mattn/go-sqlite3/blob/ae2a61f847e10e6dd771ecd4e1c55e0421cdc7f9/sqlite3.go#L1086.
-Some of these are just safe defaults, for example, busy_timeout. In order to treat the
-mattn/go-sqlite3 and modernc/sqlite more similarly, some of these mattn/go-sqlite3 default
-PRAGMAs are set when using the modernc/sqlite library. This is simply done to make
-using either SQLite library more comparibly interchangable.
+The mattn library sets some default PRAGMA values, as noted in the source code at
+https://github.com/mattn/go-sqlite3/blob/ae2a61f847e10e6dd771ecd4e1c55e0421cdc7f9/sqlite3.go#L1086.
+Some of these are just safe defaults, for example, busy_timeout. In order to treat
+the mattn and modernc libraries more similarly, some of these mattn PRAGMAs are also
+set when using the modernc library. This is done to make using both libraries act in
+the same manner, make them more interchangable with the same result.
 
 # Notes
 
-This package uses "sqlx" instead of the go standard library "sql" package because "sqlx"
-provides some additional tooling which makes using the database a bit easier (i.e.: Get(),
-Select(), and StructScan() that can thus be in queries).
-
-You should design your queries (DeployQueries, DeployFuncs, UpdateQueries, UpdateFuncs)
-so that deploying or updating the schema is safe to rerun multiple times. You do not
-want issues to occur if a user interacting with yourapp somehow tries to deploy the
-database over and over or update it after it has already been updated. For example,
-use "IF NOT EXISTS" with creating tables or indexes.
+This package uses [github.com/jmoiron/sqlx] instead of the go standard library
+[database/sql] package because sqlx provides some additional tooling which makes using
+a database a bit easier (i.e.: Get(), Select(), and StructScan()).
 */
 package sqldb
 
@@ -96,21 +98,21 @@ import (
 	"net"
 	"net/url"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 
-	//MySQL and MariaDB driver import is not an empty import b/c we use it the driver
+	"github.com/jmoiron/sqlx"
+
+	//MySQL/MariaDB driver import is not an empty import b/c we use it the driver
 	//library to generate the connection string.
 	"github.com/go-sql-driver/mysql"
 
-	//SQLite driver is imported in other sqldb-sqlite-*.go files due to different
-	//libraries & build tags.
+	//SQLite driver is imported in other sqldb-sqlite-*.go files based upon build
+	//tag to handle mattn or modernc library being used.
 
 	//MS SQL Server.
 	_ "github.com/denisenkom/go-mssqldb"
-
-	"github.com/jmoiron/sqlx"
-	"golang.org/x/exp/slices"
 )
 
 // Config is the details used for establishing and using a database connection.
@@ -135,84 +137,118 @@ type Config struct {
 	SQLitePath string
 
 	//SQLitePragmas is a list of PRAGMA queries to run when connecting to a SQLite
-	//database. Typically this is used to set the journal mode or busy timeout. PRAGMAs
-	//provided here are in SQLite format with an equals sign (ex.: PRAGMA busy_timeout=5000).
+	//database. Typically this is used to set the journal mode or busy timeout.
+	//PRAGMAs provided here are in SQLite format with an equals sign
+	//(ex.: PRAGMA busy_timeout=5000).
 	//
-	//Both the mattn/go-sqlite3 and modernc/sqlite packages allow setting of PRAGMAs
-	//in the database filename path. See the below links. PRAGMA statements here will
-	//be appended (after translating to the correct package's format) to the SQLitePath
-	//so that the PRAGMAs are set properly for the database upon initially connecting.
+	//Both the mattn and modernc packages allow setting of PRAGMAs in the database
+	//filename path. See the below links. PRAGMA statements here will be appended to
+	//the SQLitePath, after translating to the correct library's format, so that the
+	//PRAGMAs are set properly for the database upon initially opening it.
 	//
-	//Setting PRAGMAs via a query cannot be trusted; the sql package provides a
-	//connection pool and PRAGMAs are set per connection and you cannot be guaranteed
-	//to get the same connection to resuse again.
+	//It is important to note that while PRAGMAs are given in SQLite's PRAGMA query
+	//format, the PRAGMAs are actually applied to the connection string, not via
+	//queries. Setting PRAGMAs via queries cannot be trusted since PRAGMA queries are
+	//applied to the specific connection that ran it, however, the [database/sql]
+	//package maintains a list of connections, not a single one. Therefore, PRAGMAs
+	//will not be applied to all connections and results will be inconsistent; it
+	//cannot be guaranteed that you will get the same connection that applied a
+	//PRAGMA query.
 	//
 	//https://github.com/mattn/go-sqlite3#connection-string)
 	//https://pkg.go.dev/modernc.org/sqlite#Driver.Open
 	SQLitePragmas []string
 
 	//MapperFunc is used to override the mapping of database column names to struct
-	//field names or struct tags. Mapping of column names is used during queries where
-	//sqlx's StructScan(), Get(), or Select() is used.
+	//field names or struct tags. Mapping of column names is used during queries
+	//where sqlx's StructScan(), Get(), or Select() is used.
 	//
 	//By default, column names are not modified in any manner. This is in contrast to
 	//the default for sqlx where column names are returned as all lower case which
-	//requires your structs to use struct tags for each field. By not modifying column
-	//names you will not need to use struct tags since column names can exactly match
-	//exportable struct field names.
+	//requires your structs to use struct tags for each exported field. By not
+	//modifying column names you will not need to use struct tags since column names
+	//can exactly match exportable struct field names. This is just a small helper
+	//done to reduce the amount of struct tags that are necessary.
 	//
 	//http://jmoiron.github.io/sqlx/#:~:text=You%20can%20use%20the%20db%20struct%20tag%20to%20specify%20which%20column%20name%20maps%20to%20each%20struct%20field%2C%20or%20set%20a%20new%20default%20mapping%20with%20db.MapperFunc().%20The%20default%20behavior%20is%20to%20use%20strings.Lower%20on%20the%20field%20name%20to%20match%20against%20the%20column%20names.
 	MapperFunc func(string) string
 
-	//DeployQueries is a list of queries used to deploy the database schema. These
-	//queries typically create tables or indexes or insert initial data into the
-	//database. The queries listed here will be executed in order when DeploySchema()
-	//is called. Make sure the order of the queries listed here makes sense for your
-	//foreign key relationships! Each query should be safe to rerun multiple times!
+	//DeployQueries is a list of SQL queries used to deploy a database schema. These
+	//are typically used for CREATE TABLE or CREATE INDEX queries. These queries will
+	//be run when DeploySchema() is called.
+	//
+	//Order matters! Order your queries so that foreign tables for relationships are
+	//created before the relationships!
+	//
+	//Each query should be safe to be rerun multiple times!
 	DeployQueries []string
 
-	//DeployFuncs is a list of functions used to deploy the database. Use this for more
-	//complicated deployment queries than the queries provided in DeployQueries. These
-	//funcs get executed after all DeployQueries and should be used much more sparsely
-	//compared to DeployQueries. Each func should be safe to rerun multiple times!
+	//DeployFuncs is a list of functions, each containing at least one SQL query,
+	//that is used to deploy a database schema. Use these for more complicated schema
+	//deployment or initialization steps, such as INSERTing initial data. DeployFuncs
+	//should be used more sparingly than DeployQueries. These functions will be run
+	//when DeploySchema() is called.
+	//
+	//These functions are executed after DeployQueries.
+	//
+	//Each function should be safe to be rerun multiple times!
 	DeployFuncs []DeployFunc
 
-	//UpdateQueries is a list of queries used to update the database schema. These
-	//queries typically add new columns, alter a column's type, or drop a column.
-	//The queries listed here will be executed in order when UpdateSchema() is called.
-	//Each query should be safe to rerun multiple times!
+	//DeployQueryTranslators is a list of functions that translate a DeployQuery from
+	//one database dialect to another. This functionality is provided so that you do
+	//not have to rewrite your deployment queries for each database type you want to
+	//deploy for.
+	//
+	//A DeployQueryTranslator function takes a DeployQuery as an input and returns a
+	//rewritten query.
+	//
+	//See predefined translator functions starting with TF.
+	DeployQueryTranslators []func(string) string
+
+	//DeployQueryErrorHandlers is a list of functions that are run when an error
+	//results from running a DeployQuery and is used to determine if the error can be
+	//ignored. Use this for ignoring expected errors from SQL queries, typically when
+	//you rerun DeploySchema() and something already exists but the IS NOT EXISTS
+	//term is unavailable.
+	//
+	//A DeployQueryErrorHandler function takes a DeployQuery and the error resulting
+	//from Exec as an input and returns true if the error should be ignored.
+	DeployQueryErrorHandlers []func(string, error) bool
+
+	//UpdateQueries is a list of SQL queries used to update a database schema. These
+	//are typically used ot add new columns, ALTER a column, or DROP a column. These
+	//queries will be run when UpdateSchema() is called.
+	//
+	//Order matters! Order your queries if they depend on each other (ex.: renamed
+	//tables or columns).
+	//
+	//Each query should be safe to be rerun multiple times!
 	UpdateQueries []string
 
-	//UpdateFuncs is a list of functions used to deploy the database. Use this for more
-	//complicated updates to the database schema or values stored within the database.
-	//These funcs get executed after all UpdateQueries and should be used much more
-	//sparsely compared to UpdateQueries. Each func should be safe to rerun multiple
-	//times!
+	//UpdateFuncs is a list of functions, each containing at least one SQL query,
+	//that is used to update a database schema. Use these for more complicated schema
+	//updates, such as reading values before updating. UpdateFuncs should be used
+	//more sparingly than UpdateQueries. These functions will be run when
+	//UpdateSchema() is called.
+	//
+	//These functions are executed after UpdateQueries.
+	//
+	//Each function should be safe to be rerun multiple times!
 	UpdateFuncs []UpdateFunc
 
-	//UpdateIgnoreErrorFuncs is a list of functions run when an UpdateQuery results in
-	//an error and determins if the error can be ignored. This is used to ignore errors
-	//for queries that aren't actual errors (ex.: adding a column that already exists).
-	//Each func in this list should be very narrowly focused, checking both the query
-	//and error, so that real errors aren't ignored by mistake.
+	//UpdateQueryTranslators is a list of functions that translate an UpdateQuery
+	//from one database dialect to another.
 	//
-	//Some default funcs are predefined. See funcs in this package starting with UF...
-	UpdateIgnoreErrorFuncs []UpdateIgnoreErrorFunc
+	//An UpdateQueryTranslator function takes an UpdateQuery as an input and returns
+	//a rewritten query.
+	UpdateQueryTranslators []func(string) string
 
-	//TranslateCreateTableFuncs is a list of functions run against each DeployQuery
-	//or UpdateQuery that contains a CREATE TABLE clause that modifies the query to
-	//translate it from one database format to another. This tooling is used so that
-	//you can write your CREATE TABLE queries in one database format (ex.: MySQL) but
-	//deploy your database in multiple formats (ex.: MySQL & SQLite).
-	//
-	//A list of default funcs are predefined. See funcs in this package starting with
-	//TF...
-	TranslateCreateTableFuncs []func(string) string
-
-	//TranslateUpdateFuncs is a list of functions run against each UpdateQuery that
-	//modifies the query to translate it from one database format to another. See
-	//TranslateCreateTableFuncs for more info.
-	TranslateUpdateFuncs []func(string) string
+	//UpdateQueryErrorHandlers is a list of functions that are run when an error
+	//results from running an UpdateQuery and is used to determine if the error can
+	//be ignored.
+	//An UpdateQueryErrorHandler function takes an UpdateQuery and the error resulting
+	//from Exec as an input and returns true if the error should be ignored.
+	UpdateQueryErrorHandler []func(string, error) bool
 
 	//LoggingLevel enables logging at ERROR, INFO, or DEBUG levels.
 	LoggingLevel logLevel
@@ -241,7 +277,8 @@ var validDBTypes = []dbType{
 }
 
 // DBType returns a dbType. This is used when parsing a user-provided database type
-// (such as from a configuration file) to convert to a db type defined in this package.
+// (such as from ann external configuration file) to convert to a dbType defined in
+// this package.
 func DBType(s string) dbType {
 	return dbType(s)
 }
@@ -263,58 +300,58 @@ type logLevel int
 
 const (
 	LogLevelNone  logLevel = iota //no logging.
-	LogLevelError                 //general errors, most typical use/
+	LogLevelError                 //general errors, most typical use.
 	LogLevelInfo                  //some info on db connections, deployment, updates.
-	LogLevelDebug                 //primarily development related.
+	LogLevelDebug                 //primarily used during development.
 )
 
-// errors
 var (
 	//ErrConnected is returned when a trying to establish a connection to an already
 	//connected-to database.
 	ErrConnected = errors.New("sqldb: connection already established")
 
-	//ErrSQLitePathNotProvided is returned when user doesn't provided a path to the
-	//SQLite database file, or the path provided is all whitespace.
+	//ErrSQLitePathNotProvided is returned SQLitePath is empty.
 	ErrSQLitePathNotProvided = errors.New("sqldb: SQLite path not provided")
 
-	//ErrHostNotProvided is returned when user doesn't provide the host IP or FQDN
-	//of a MySQL or MariaDB server.
+	//ErrHostNotProvided is returned when no Host IP or FQDN was provided.
 	ErrHostNotProvided = errors.New("sqldb: database server host not provided")
 
-	//ErrInvalidPort is returned when user doesn't provide, or provided an invalid
-	//port, of a MySQL or MariaDB server.
+	//ErrInvalidPort is returned when no Port was provided or the port was invalid.
 	ErrInvalidPort = errors.New("sqldb: database server port invalid")
 
-	//ErrNameNotProvided is returned when user doesn't provide a name of a database.
+	//ErrNameNotProvided is returned when no database Name was provided.
 	ErrNameNotProvided = errors.New("sqldb: database name not provided")
 
-	//ErrUserNotProvided is returned when user doesn't provide a user to connect to
-	//the database server with.
+	//ErrUserNotProvided is returned when no database User was provided.
 	ErrUserNotProvided = errors.New("sqldb: database user not provided")
 
-	//ErrPasswordNotProvided is returned when user doesn't provide the password to
-	//connect to the database with. Blank passwords are not supported for security.
+	//ErrPasswordNotProvided is returned when no database Password was provided.
+	//Blank passwords are not supported since it is terrible for security.
 	ErrPasswordNotProvided = errors.New("sqldb: password for database user not provided")
+)
 
-	//ErrNoColumnsGiven is returned when user is trying to build a column list for a
-	//query but no columns were provided.
+var (
+	//ErrNoColumnsGiven is returned when trying to build a column list for a query
+	//but no columns were provided.
 	ErrNoColumnsGiven = errors.New("sqldb: no columns provided")
 
 	//ErrExtraCommaInColumnString is returned when building a column string for a
-	//query but an extra comma exists which would cause the query to not run correctly.
+	//query but an extra comma exists which would cause the query to run incorrectly.
 	//Extra commas are usually due to an empty column name being provided or a comma
 	//being added to the column name by mistake.
 	ErrExtraCommaInColumnString = errors.New("sqldb: extra comma in column name")
+)
 
+var (
 	//ErrInvalidLoggingLevel is returned when an invalid logging level is provided.
 	ErrInvalidLoggingLevel = errors.New("sqldb: invalid logging level")
 )
 
-// config is the package level saved config. This stores your config when you want to
-// use this package as a singleton and store your config for global use. This is used
-// when you call one of the NewDefaultConfig() funcs which returns a pointer to this
-// config.
+// config is the configuration to connect to and use a SQL database. This stores your
+// configuration when you are using this package as a singleton.
+//
+// This is used when you call one of the NewDefaultConfig() functions or when Save()
+// is called.
 var config Config
 
 // NewConfig returns a base configuration that will need to be modified for use to
@@ -403,7 +440,8 @@ func (cfg *Config) validate() (err error) {
 
 	//Make sure logging level is a valid type if something was provided.
 	if cfg.LoggingLevel < LogLevelNone || cfg.LoggingLevel > LogLevelDebug {
-		return ErrInvalidLoggingLevel
+		cfg.LoggingLevel = LogLevelError
+		cfg.debugPrintln("sqldb.validate", "invalid LoggingLevel, defaulting to LogLevelError")
 	}
 
 	return
