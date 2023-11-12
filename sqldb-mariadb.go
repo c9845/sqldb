@@ -28,3 +28,16 @@ func (cfg *Config) IsMariaDB() bool {
 func IsMariaDB() bool {
 	return config.IsMariaDB()
 }
+
+// IsMySQLOrMariaDB returns if the database is a MySQL or MariaDB. This is useful
+// since MariaDB is a fork of MySQL and most things are compatible; this way you
+// don't need to check IsMySQL() and IsMariaDB().
+func (cfg *Config) IsMySQLOrMariaDB() bool {
+	return cfg.Type == DBTypeMySQL || cfg.Type == DBTypeMariaDB
+}
+
+// IsMySQLOrMariaDB returns if the database is a MySQL or MariaDB for the package
+// level config.
+func IsMySQLOrMariaDB() bool {
+	return config.IsMySQLOrMariaDB()
+}

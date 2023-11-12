@@ -98,7 +98,6 @@ import (
 	"net"
 	"net/url"
 	"os"
-	"slices"
 	"strconv"
 	"strings"
 
@@ -138,7 +137,7 @@ type Config struct {
 
 	//SQLitePragmas is a list of PRAGMA queries to run when connecting to a SQLite
 	//database. Typically this is used to set the journal mode or busy timeout.
-	//PRAGMAs provided here are in SQLite format with an equals sign
+	//PRAGMAs provided here are in SQLite query format with an equals sign
 	//(ex.: PRAGMA busy_timeout=5000).
 	//
 	//Both the mattn and modernc packages allow setting of PRAGMAs in the database
@@ -283,17 +282,6 @@ func DBType(s string) dbType {
 	return dbType(s)
 }
 
-// valid checks if a provided dbType is one of our supported databases. This is used
-// when validating.
-func (t dbType) valid() error {
-	contains := slices.Contains(validDBTypes, t)
-	if contains {
-		return nil
-	}
-
-	return fmt.Errorf("invalid db type, should be one of '%s', got '%s'", validDBTypes, t)
-}
-
 // Logging levels, each higher level is inclusive of lower levels; i.e.: if you choose
 // to use LogLevelDebug, all Error and Info logging will also be output.
 type logLevel int
@@ -303,6 +291,8 @@ const (
 	LogLevelError                 //general errors, most typical use.
 	LogLevelInfo                  //some info on db connections, deployment, updates.
 	LogLevelDebug                 //primarily used during development.
+
+	LogLevelDefault = LogLevelError
 )
 
 var (
@@ -347,73 +337,80 @@ var (
 	ErrInvalidLoggingLevel = errors.New("sqldb: invalid logging level")
 )
 
-// config is the configuration to connect to and use a SQL database. This stores your
+// cfg is the configuration to connect to and use a SQL database. This stores your
 // configuration when you are using this package as a singleton.
 //
 // This is used when you call one of the NewDefaultConfig() functions or when Save()
 // is called.
-var config Config
+var cfg *Config
 
-// NewConfig returns a base configuration that will need to be modified for use to
-// connect to and interact with a database. Typically you would use New...Config()
-// instead.
-func NewConfig(t dbType) (cfg *Config, err error) {
-	err = t.valid()
-	if err != nil {
-		return
-	}
+// New returns a blank Config instance. Use this when you do not want to use the
+// global, singleton, config. This is always used when you want to connect to more
+// than one database. Some defaults are set.
+func New() *Config {
+	c := new(Config)
 
-	cfg = &Config{
-		Type:              t,
-		MapperFunc:        DefaultMapperFunc,
-		LoggingLevel:      LogLevelInfo,
-		ConnectionOptions: make(map[string]string),
-	}
-	return
+	c.SQLitePragmas = sqliteDefaultPragmas
+	c.MapperFunc = defaultMapperFunc
+	c.LoggingLevel = LogLevelDefault
+	c.ConnectionOptions = make(map[string]string)
+
+	return c
 }
 
-// DefaultConfig initializes the globally accessible package level config with some
-// defaults set. Typically you would use Default...Config() instead.
-func DefaultConfig(t dbType) (err error) {
-	cfg, err := NewConfig(t)
-	config = *cfg
-	return
+// Default returns a pointer to the global, singleton, config. Use this when you do
+// not want to have to worry about storing your sqldb configuration. This is typically
+// used when you only connect to a single database. Some defaults are set.
+func Default() *Config {
+	c := New()
+
+	cfg = c
+
+	return cfg
 }
 
-// Save saves a configuration to the package level config. Use this in conjunction with
-// New...Config(), or just sqldb.Config{}, when you want to heavily customize the
-// config. This is not a method on Config so that any modifications done to the original
-// config after Save() is called aren't propagated to the package level config without
-// calling Save() again.
-func Save(cfg Config) {
-	config = cfg
+// Save saves a config to this package's global config variable. Use Save in
+// combination with New() to achieve the same result as calling Default(). This is
+// most likely used when you call New() instead of Default() to heavily customize the
+// config but you still want to use this package as a singleton.
+func (c *Config) Save() {
+	cfg = c
 }
 
-// GetDefaultConfig returns the package level saved config.
-func GetDefaultConfig() *Config {
-	return &config
+// defaultMapperFunc is the default MapperFunc used in configs. This handles the
+// mapping of column names to struct field names. By default, no modification of the
+// column name is done, the column name is returned as-is. This is unlike [sqlx] that
+// lowercases all column names and thus requires struct tags to match up against
+// exported struct fields.
+func defaultMapperFunc(s string) string {
+	return s
 }
 
-// validate handles validation of a provided config. This is called in Connect().
-func (cfg *Config) validate() (err error) {
+//
+//
+//
+//
+//
+//
+//
+//
+//
+
+// validate handles validation of a provided config before establishing a connection
+// to the database. This is called in Connect().
+func (c *Config) validate() (err error) {
 	//Sanitize.
-	cfg.SQLitePath = strings.TrimSpace(cfg.SQLitePath)
-	cfg.Host = strings.TrimSpace(cfg.Host)
-	cfg.Name = strings.TrimSpace(cfg.Name)
-	cfg.User = strings.TrimSpace(cfg.User)
+	c.SQLitePath = strings.TrimSpace(c.SQLitePath)
+	c.Host = strings.TrimSpace(c.Host)
+	c.Name = strings.TrimSpace(c.Name)
+	c.User = strings.TrimSpace(c.User)
 
-	//Make sure db type is valid. A user can modify this to a string of any value via
-	//"cfg.Type = 'asdf'" even though Type has a specific dbType type. This catches
-	//this slight possibility.
-	err = cfg.Type.valid()
-	if err != nil {
-		return
-	}
-
-	//Check config based on db type since each type of db has different requirements.
-	switch cfg.Type {
+	//Check config fields based on the database type since each type of database has
+	//different requirements. This also checks that a valid (i.e.: supported by this
+	//package) database type was provided.
+	switch c.Type {
 	case DBTypeSQLite:
-		if cfg.SQLitePath == "" {
+		if c.SQLitePath == "" {
 			return ErrSQLitePathNotProvided
 		}
 
@@ -421,89 +418,93 @@ func (cfg *Config) validate() (err error) {
 		//errors when the database is connected to via Open().
 
 	case DBTypeMySQL, DBTypeMariaDB, DBTypeMSSQL:
-		if cfg.Host == "" {
+		if c.Host == "" {
 			return ErrHostNotProvided
 		}
-		if cfg.Port == 0 || cfg.Port > 65535 {
+		if c.Port == 0 || c.Port > 65535 {
 			return ErrInvalidPort
 		}
-		if cfg.Name == "" {
+		if c.Name == "" {
 			return ErrNameNotProvided
 		}
-		if cfg.User == "" {
+		if c.User == "" {
 			return ErrUserNotProvided
 		}
-		if cfg.Password == "" {
+		if c.Password == "" {
 			return ErrPasswordNotProvided
 		}
+
+	default:
+		return fmt.Errorf("sqldb: invalid database type, should be one of '%s', got '%s'", validDBTypes, c.Type)
 	}
 
-	//Make sure logging level is a valid type if something was provided.
+	//Use default logging level if an invalid logging level was provided. Not
+	//error out here if an invalid value was provided since logging is less important.
 	if cfg.LoggingLevel < LogLevelNone || cfg.LoggingLevel > LogLevelDebug {
-		cfg.LoggingLevel = LogLevelError
-		cfg.debugPrintln("sqldb.validate", "invalid LoggingLevel, defaulting to LogLevelError")
+		cfg.LoggingLevel = LogLevelDefault
+		cfg.debugPrintln("sqldb.validate", "invalid LoggingLevel, defaulting to LogLevelDefault")
 	}
 
 	return
 }
 
 // buildConnectionString creates the string used to connect to a database. The
-// returned values is built for a specific database type since each type has different
-// parameters needed for the connection.
+// returned values is built for a specific database type since each type has
+// different parameters needed for the connection.
 //
-// Note that when building the connection string for MySQL or MariaDB, we have to omit
-// the databasename if we are deploying the database, since, obviously, the database
-// does not exist yet. The database name is only appended to the connection string when
-// the database exists.
+// Note that when building the connection string for MySQL or MariaDB, we have to
+// omit the database name if we are deploying the database, since, obviously, the
+// database does not exist yet! The database name is only appended to the connection
+// string when connecting to an already existing database.
 //
-// When building a connection string for SQLite, we attempt to translate and listed
-// SQLitePragmas to the correct format based on the SQLite library in use and appending
-// these pragmas to the filepath. This is done since you can only reliably set pragmas
-// when first connecting to the SQLite database, not anytime afterward, due to connection
-// pooling and pragmas being set per-connection.
-func (cfg *Config) buildConnectionString(deployingDB bool) (connString string) {
-	switch cfg.Type {
+// When building a connection string for SQLite, we attempt to translate the listed
+// SQLitePragmas to the correct format based on the SQLite library in use and
+// append these pragmas to the filepath. This is done since you can only reliably set
+// PRAGMAs when first connecting to the SQLite database, not anytime afterward, due to
+// connection pooling and PRAGMAs being set per-connection.
+func (c *Config) buildConnectionString(deployingDB bool) (connString string) {
+	switch c.Type {
 	case DBTypeMariaDB, DBTypeMySQL:
 		//For MySQL or MariaDB, use connection string tooling and formatter instead
 		//of building the connection string manually.
 		dbConnectionConfig := mysql.NewConfig()
-		dbConnectionConfig.User = cfg.User
-		dbConnectionConfig.Passwd = cfg.Password
+		dbConnectionConfig.User = c.User
+		dbConnectionConfig.Passwd = c.Password
 		dbConnectionConfig.Net = "tcp"
-		dbConnectionConfig.Addr = net.JoinHostPort(cfg.Host, strconv.Itoa(int(cfg.Port)))
+		dbConnectionConfig.Addr = net.JoinHostPort(c.Host, strconv.Itoa(int(c.Port)))
 
 		if !deployingDB {
-			dbConnectionConfig.DBName = cfg.Name
+			dbConnectionConfig.DBName = c.Name
 		}
 
 		connString = dbConnectionConfig.FormatDSN()
 
 	case DBTypeSQLite:
-		connString = cfg.SQLitePath
+		connString = c.SQLitePath
 
 		//For SQLite, the connection string is simply a path to a file. However, we
 		//need to append pragmas as needed.
-		if len(cfg.SQLitePragmas) != 0 {
-			pragmasToAdd := cfg.SQLitePragmasAsString()
+		if len(c.SQLitePragmas) != 0 {
+			pragmasToAdd := pragmsQueriesToString(c.SQLitePragmas)
 			connString += pragmasToAdd
 
-			cfg.debugPrintln("sqldb.buildConnectionString", "PRAGMA String:", pragmasToAdd)
-			cfg.debugPrintln("sqldb.buildConnectionString", "Path With PRAGMAS:", connString)
+			c.debugPrintln("sqldb.buildConnectionString", "PRAGMA String:", pragmasToAdd)
+			c.debugPrintln("sqldb.buildConnectionString", "Path With PRAGMAS:", connString)
 		}
 
 	case DBTypeMSSQL:
 		u := &url.URL{
 			Scheme: "sqlserver",
-			User:   url.UserPassword(cfg.User, cfg.Password),
-			Host:   net.JoinHostPort(cfg.Host, strconv.FormatUint(uint64(cfg.Port), 10)),
+			User:   url.UserPassword(c.User, c.Password),
+			Host:   net.JoinHostPort(c.Host, strconv.FormatUint(uint64(c.Port), 10)),
 		}
 
 		q := url.Values{}
-		q.Add("database", cfg.Name)
+		q.Add("database", c.Name)
 
 		//Handle other connection options.
-		if len(cfg.ConnectionOptions) > 0 {
-			for key, value := range cfg.ConnectionOptions {
+		if len(c.ConnectionOptions) > 0 {
+			for key, value := range c.ConnectionOptions {
 				q.Add(key, value)
 			}
 		}
@@ -512,134 +513,136 @@ func (cfg *Config) buildConnectionString(deployingDB bool) (connString string) {
 		connString = u.String()
 
 	default:
-		//we should never hit this since we already validated the db type in in
+		//we should never hit this since we already validated the database type in in
 		//validate().
 	}
 
 	return
 }
 
-// getDriver returns the Go sql driver used for the chosen database type.
-func getDriver(t dbType) (driver string, err error) {
-	if err := t.valid(); err != nil {
-		return "", err
-	}
-
+// getDriver returns the Go sql driver used for the chosen database type. This is
+// used in Connect() to get the name of the driver as needed by [database/sql.Open].
+func getDriver(t dbType) (driver string) {
 	switch t {
-	case DBTypeMySQL, DBTypeMariaDB:
-		driver = "mysql"
 	case DBTypeSQLite:
-		//See sqlite subfiles based on library used. Correct driver is chosen based
+		//See sqlite- subfiles based on library used. Correct driver is chosen based
 		//on build tags.
 		driver = sqliteDriverName
 
+	case DBTypeMySQL, DBTypeMariaDB:
+		driver = "mysql"
+
 	case DBTypeMSSQL:
 		driver = "mssql" //maybe sqlserver works too?
+
+	default:
+		//This can never occur because this func is only called in Connect() after
+		//validate() has already been called and verified a valid database type was
+		//provided.
 	}
 
 	return
 }
 
 // Connect connects to the database. This establishes the database connection, and
-// saves the connection pool for use in running queries. For SQLite this also runs any
-// PRAGMA commands.
-func (cfg *Config) Connect() (err error) {
+// saves the connection pool for use in running queries. For SQLite this also runs
+// any PRAGMA commands upon establishing the connection.
+func (c *Config) Connect() (err error) {
 	//Make sure the connection isn't already established to prevent overwriting it.
-	//This forces users to call Close() first to prevent any incorrect db usage.
-	if cfg.Connected() {
+	//This forces users to call Close() first to prevent any errors.
+	if c.Connected() {
 		return ErrConnected
 	}
 
 	//Make sure the config is valid.
-	err = cfg.validate()
+	err = c.validate()
 	if err != nil {
 		return
 	}
 
 	//Get the connection string used to connect to the database.
-	connString := cfg.buildConnectionString(false)
+	connString := c.buildConnectionString(false)
 
-	//Get the correct driver based on the database type. If using SQLite, the correct
-	//driver is chosen based on build tags. Error should never occur this since we
-	//already validated the config in validate().
+	//Get the correct driver based on the database type.
 	//
-	//We can ignore the error here since an invalid Type would have already been caught
-	//in .validate().
-	driver, _ := getDriver(cfg.Type)
+	//If using SQLite, the correct driver is chosen based on build tags.
+	driver := getDriver(c.Type)
 
 	//Connect to the database.
 	//
 	//For SQLite, check if the database file exists. This func will not create the
 	//database file. The database file needs to be created first with Deploy(). If
-	//the database is in-memory, we can ignore this error.
-	if cfg.IsSQLite() && cfg.SQLitePath != InMemoryFilePathRacy && cfg.SQLitePath != InMemoryFilePathRaceSafe {
-		_, err = os.Stat(cfg.SQLitePath)
+	//the database is in-memory, we can ignore this error though, since, the database
+	//will never exist yet an is in fact created when Open() and Ping() are called
+	//below.
+	if c.IsSQLite() && c.SQLitePath != InMemoryFilePathRacy && c.SQLitePath != InMemoryFilePathRaceSafe {
+		_, err = os.Stat(c.SQLitePath)
 		if os.IsNotExist(err) {
 			return err
 		}
 	}
 
-	//This doesn't really establish a connection to the database, it just "builds" the
-	//connection. The connection is established with Ping() below.
+	//Connect to the database.
 	//
-	//Note no `defer conn.Close()` since we want to keep the db connection alive for
-	//future use in running queries. It is the job of whatever func called Connect to
-	//call Close (or defer cfg.Close()).
+	//Note no "defer conn.Close()" since we want to keep the connection alive for
+	//future use in running queries. It is the job of whatever func called Connect()
+	//to call Close().
 	conn, err := sqlx.Open(driver, connString)
 	if err != nil {
 		return
 	}
 
-	//Test the connection to the database to make sure it works. This opens the
-	//connection for future use.
 	err = conn.Ping()
 	if err != nil {
 		return
 	}
 
 	//Set the mapper func for mapping column names to struct fields.
-	if cfg.MapperFunc != nil {
-		conn.MapperFunc(cfg.MapperFunc)
+	if c.MapperFunc != nil {
+		conn.MapperFunc(c.MapperFunc)
 	}
 
 	//Save the connection for running future queries.
-	cfg.connection = conn
+	c.connection = conn
 
-	//Diagnostic logging.
-	switch cfg.Type {
+	//Diagnostic logging, useful for logging out which database you are connected to.
+	switch c.Type {
 	case DBTypeMySQL, DBTypeMariaDB, DBTypeMSSQL:
-		cfg.infoPrintln("sqldb.Connect", "Connecting to database "+cfg.Name+" on "+cfg.Host+" with user "+cfg.User+".")
+		c.infoPrintln("sqldb.Connect", "Connecting to database "+c.Name+" on "+c.Host+" with user "+c.User+".")
 	case DBTypeSQLite:
-		cfg.infoPrintln("sqldb.Connect", "Connecting to database: "+cfg.SQLitePath+".")
-		cfg.infoPrintln("sqldb.Connect", "SQLite Library: "+GetSQLiteLibrary()+".")
-		cfg.infoPrintln("sqldb.Connect", "SQLite PRAGMAs: "+cfg.SQLitePragmasAsString()+".")
+		c.infoPrintln("sqldb.Connect", "Connecting to database: "+c.SQLitePath+".")
+		c.infoPrintln("sqldb.Connect", "SQLite Library: "+GetSQLiteLibrary()+".")
+		c.infoPrintln("sqldb.Connect", "SQLite PRAGMAs: "+pragmsQueriesToString(c.SQLitePragmas)+".")
 	default:
-		//this can never happen since we hardcode the supported sqlite libraries.
+		//This can never occur because we called validate() above to verify that a
+		//valid database type was provided.
 	}
 
 	return
 }
 
-// Connect handles the connection to the database using the default package level
-// config.
+// Connect connects to the database. This establishes the database connection, and
+// saves the connection pool for use in running queries. For SQLite this also runs
+// any PRAGMA commands upon establishing the connection.
 func Connect() (err error) {
-	return config.Connect()
+	return cfg.Connect()
 }
 
-// Close closes the connection to the database.
-func (cfg *Config) Close() (err error) {
-	return cfg.connection.Close()
+// Close handles closing the underlying database connection stored in the config.
+func (c *Config) Close() (err error) {
+	return c.connection.Close()
 }
 
-// Close closes the connection using the default package level config.
+// Connect handles closing the underlying database connection stored in the package
+// level config.
 func Close() (err error) {
-	return config.Close()
+	return cfg.Close()
 }
 
-// Connected returns if the config represents an established connection to the database.
-func (cfg *Config) Connected() bool {
+// Connected returns if the config represents an established connection to a database.
+func (c *Config) Connected() bool {
 	//A connection has never been established.
-	if cfg.connection == nil {
+	if c.connection == nil {
 		return false
 	}
 
@@ -647,8 +650,8 @@ func (cfg *Config) Connected() bool {
 	//this case, it still stores the previous connection's info for some reason. We
 	//don't set it to nil in Close() since that isn't how the sql package handles
 	//closing.
-	err := cfg.connection.Ping()
-	//lint:ignore S1008 - I like the "if {return...}" format better than "return err == nil".
+	err := c.connection.Ping()
+	//lint:ignore S1008 - I like the "if err == nil {return...}" format better than "return err == nil".
 	if err != nil {
 		return false
 	}
@@ -657,84 +660,40 @@ func (cfg *Config) Connected() bool {
 	return true
 }
 
-// Connected returns if the config represents an established connection to the database.
+// Connected returns if the config represents an established connection to a database.
 func Connected() bool {
-	return config.Connected()
+	return cfg.Connected()
 }
 
-// Connection returns the database connection stored in a config for use in running
-// queries.
-func (cfg *Config) Connection() *sqlx.DB {
-	return cfg.connection
+// Connection returns the underlying database connection stored in a config for use
+// in running queries.
+func (c *Config) Connection() *sqlx.DB {
+	return c.connection
 }
 
-// Connection returns the database connection for the package level config.
+// Connection returns the underlying database connection stored in the package level
+// config for use in running queries.
 func Connection() *sqlx.DB {
-	return config.Connection()
-}
-
-// IsMySQLOrMariaDB returns if the database is a MySQL or MariaDB. This is useful
-// since MariaDB is a fork of MySQL and most things are compatible; this way you
-// don't need to check IsMySQL() and IsMariaDB().
-func (cfg *Config) IsMySQLOrMariaDB() bool {
-	return cfg.Type == DBTypeMySQL || cfg.Type == DBTypeMariaDB
-}
-
-// IsMySQLOrMariaDB returns if the database is a MySQL or MariaDB for the package
-// level config.
-func IsMySQLOrMariaDB() bool {
-	return config.IsMySQLOrMariaDB()
-}
-
-// DefaultMapperFunc is the default MapperFunc set on configs. It returns the column
-// names unmodified.
-func DefaultMapperFunc(s string) string {
-	return s
-}
-
-// MapperFunc sets the mapper func for the package level config.
-func MapperFunc(m func(string) string) {
-	config.MapperFunc = m
+	return cfg.Connection()
 }
 
 // AddConnectionOption adds a key-value pair to a config's ConnnectionOptions field.
-// Using this func is just easier then calling map[string]string{"key", "value"}. This
-// does not check if the key already exist, it will simply add a duplicate key-value
-// pair.
-func (cfg *Config) AddConnectionOption(key, value string) {
+// Using this func is just easier then calling map[string]string{"key", "value"}.
+// This does not check if the key already exist, it will simply add a duplicate
+// key-value pair.
+func (c *Config) AddConnectionOption(key, value string) {
 	//Initialize map if needed.
-	if cfg.ConnectionOptions == nil {
-		cfg.ConnectionOptions = make(map[string]string)
+	if c.ConnectionOptions == nil {
+		c.ConnectionOptions = make(map[string]string)
 	}
 
-	cfg.ConnectionOptions[key] = value
+	c.ConnectionOptions[key] = value
 }
 
-// AddConnectionOption adds a key-value pair to the ConnectionOptions field for the
-// package level config.
+// AddConnectionOption adds a key-value pair to a config's ConnnectionOptions field.
+// Using this func is just easier then calling map[string]string{"key", "value"}.
+// This does not check if the key already exist, it will simply add a duplicate
+// key-value pair.
 func AddConnectionOption(key, value string) {
-	config.AddConnectionOption(key, value)
-}
-
-// UseDefaultTranslateFuncs populates TranslateCreateTableFuncs and TranslateUpdateFuncs
-// with the default translation funcs.
-func (cfg *Config) UseDefaultTranslateFuncs() {
-	if cfg.IsSQLite() {
-		cfg.TranslateCreateTableFuncs = []func(string) string{
-			TFMySQLToSQLiteReformatID,
-			TFMySQLToSQLiteRemovePrimaryKeyDefinition,
-			TFMySQLToSQLiteReformatDefaultTimestamp,
-			TFMySQLToSQLiteReformatDatetime,
-			TFMySQLToSQLiteBLOB,
-		}
-		cfg.TranslateUpdateFuncs = []func(string) string{
-			TFMySQLToSQLiteBLOB,
-		}
-	}
-}
-
-// UseDefaultTranslateFuncs populates TranslateCreateTableFuncs and TranslateUpdateFuncs
-// with the default translation funcs for the package level config.
-func UseDefaultTranslateFuncs() {
-	config.UseDefaultTranslateFuncs()
+	cfg.AddConnectionOption(key, value)
 }
