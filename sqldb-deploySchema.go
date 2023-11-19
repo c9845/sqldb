@@ -9,10 +9,6 @@ import (
 	"github.com/jmoiron/sqlx"
 )
 
-// DeployFunc is a function used to perform a deployment task that is more complex
-// than just a SQL query that could be provided in a DeployQuery.
-type DeployFunc func(*sqlx.DB) error
-
 // DeploySchemaOptions provides options when deploying a schema.
 type DeploySchemaOptions struct {
 	// CloseConnection determines if the database connection should be closed after
@@ -108,16 +104,16 @@ func (c *Config) DeploySchema(ops DeploySchemaOptions) (err error) {
 	connection := c.Connection()
 
 	//Run each DeployQuery.
-	c.infoPrintln("sqldb.DeploySchema", "Running DeployQueries...")
+	c.infoLn("sqldb.DeploySchema", "Running DeployQueries...")
 	for _, q := range c.DeployQueries {
 		//Translate.
 		q := c.RunDeployQueryTranslators(q)
 
 		//Log for diagnostics.
 		if len(q) > 50 {
-			c.infoPrintln(q[:50])
+			c.infoLn(q[:50])
 		} else {
-			c.infoPrintln(q)
+			c.infoLn(q)
 		}
 
 		//Execute the query. If an error occurs, check if it should be ignored.
@@ -129,41 +125,41 @@ func (c *Config) DeploySchema(ops DeploySchemaOptions) (err error) {
 			return
 		}
 	}
-	c.infoPrintln("sqldb.DeploySchema", "Running DeployQueries...done")
+	c.infoLn("sqldb.DeploySchema", "Running DeployQueries...done")
 
 	//Run each DeployFunc.
-	c.infoPrintln("sqldb.DeploySchema", "Running DeployFuncs...")
+	c.infoLn("sqldb.DeploySchema", "Running DeployFuncs...")
 	for _, f := range c.DeployFuncs {
 		//Get function name for diagnostic logging, since for DeployQueries above we
 		//log out some or all of each query.
 		rawNameWithPath := runtime.FuncForPC(reflect.ValueOf(f).Pointer()).Name()
 		funcName := path.Base(rawNameWithPath)
-		c.infoPrintln(funcName)
+		c.infoLn(funcName)
 
 		//Execute the func.
 		innerErr := f(connection)
 		if innerErr != nil {
 			err = innerErr
-			log.Println("sqldb.DeploySchema", "Error with DeployFunc.", funcName, err)
+			c.errorLn("sqldb.DeploySchema", "Error with DeployFunc.", funcName, err)
 			c.Close()
 			return
 		}
 	}
-	c.infoPrintln("sqldb.DeploySchema", "Running DeployFuncs...done")
+	c.infoLn("sqldb.DeploySchema", "Running DeployFuncs...done")
 
 	//Close the connection to the database, if needed.
 	if ops.CloseConnection {
 		c.Close()
-		c.debugPrintln("sqldb.DeploySchema", "Connection closed after successful deploy.")
+		c.debugLn("sqldb.DeploySchema", "Connection closed after successful deploy.")
 	} else {
-		c.debugPrintln("sqldb.DeploySchema", "Connection left open after successful deploy.")
+		c.debugLn("sqldb.DeploySchema", "Connection left open after successful deploy.")
 	}
 
 	return
 }
 
 // RunDeployQueryTranslators runs the list of DeployQueryTranslators on the provided
-// query. This is run in Deploy().
+// query. This is run in DeploySchema().
 func (c *Config) RunDeployQueryTranslators(in string) (out string) {
 	for _, t := range c.DeployQueryTranslators {
 		out = t(in)

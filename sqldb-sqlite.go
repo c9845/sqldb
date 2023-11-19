@@ -29,12 +29,12 @@ const (
 	InMemoryFilePathRaceSafe = "file::memory:?cache=shared"
 )
 
-// IsSQLite returns true if the database is a SQLite database.
+// IsSQLite returns true if a config represents a SQLite connection.
 func (c *Config) IsSQLite() bool {
 	return c.Type == DBTypeSQLite
 }
 
-// IsSQLite returns true if the database is a SQLite database.
+// IsSQLite returns true if a config represents a SQLite connection.
 func IsSQLite() bool {
 	return cfg.IsSQLite()
 }
@@ -77,7 +77,7 @@ func GetSQLiteLibrary() string {
 // driver.
 //
 // SQLite PRAGMAs need to be set upon initially connecting to the database. The
-// PRAGMAs are added to the database file's path as query parameter (?...&...).
+// PRAGMAs are added to the database file's path as query parameters (?...&...).
 // However, the format of these appended query parameters differs between SQLite
 // libraries. This translates PRAGMA statements into the format required by the
 // library the binary is built with.

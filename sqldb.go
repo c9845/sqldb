@@ -198,7 +198,7 @@ type Config struct {
 	//These functions are executed after DeployQueries.
 	//
 	//Each function should be safe to be rerun multiple times!
-	DeployFuncs []DeployFunc
+	DeployFuncs []QueryFunc
 
 	//DeployQueryTranslators is a list of functions that translate a DeployQuery from
 	//one database dialect to another. This functionality is provided so that you do
@@ -209,7 +209,7 @@ type Config struct {
 	//rewritten query.
 	//
 	//See predefined translator functions starting with TF.
-	DeployQueryTranslators []func(string) string
+	DeployQueryTranslators []Translator
 
 	//DeployQueryErrorHandlers is a list of functions that are run when an error
 	//results from running a DeployQuery and is used to determine if the error can be
@@ -219,7 +219,7 @@ type Config struct {
 	//
 	//A DeployQueryErrorHandler function takes a DeployQuery and the error resulting
 	//from Exec as an input and returns true if the error should be ignored.
-	DeployQueryErrorHandlers []func(string, error) bool
+	DeployQueryErrorHandlers []ErrorHandler
 
 	//UpdateQueries is a list of SQL queries used to update a database schema. These
 	//are typically used ot add new columns, ALTER a column, or DROP a column. These
@@ -240,21 +240,21 @@ type Config struct {
 	//These functions are executed after UpdateQueries.
 	//
 	//Each function should be safe to be rerun multiple times!
-	UpdateFuncs []UpdateFunc
+	UpdateFuncs []QueryFunc
 
 	//UpdateQueryTranslators is a list of functions that translate an UpdateQuery
 	//from one database dialect to another.
 	//
 	//An UpdateQueryTranslator function takes an UpdateQuery as an input and returns
 	//a rewritten query.
-	UpdateQueryTranslators []func(string) string
+	UpdateQueryTranslators []Translator
 
 	//UpdateQueryErrorHandlers is a list of functions that are run when an error
 	//results from running an UpdateQuery and is used to determine if the error can
 	//be ignored.
 	//An UpdateQueryErrorHandler function takes an UpdateQuery and the error resulting
 	//from Exec as an input and returns true if the error should be ignored.
-	UpdateQueryErrorHandlers []func(string, error) bool
+	UpdateQueryErrorHandlers []ErrorHandler
 
 	//LoggingLevel enables logging at ERROR, INFO, or DEBUG levels.
 	LoggingLevel logLevel
@@ -264,6 +264,44 @@ type Config struct {
 	//func to run queries against the database.
 	connection *sqlx.DB
 }
+
+// QueryFunc is a function used to perform a deployment task that is more complex
+// than just a SQL query that could be provided in a DeployQuery.
+type QueryFunc func(*sqlx.DB) error
+
+// Translator is a function that translates a DeployQuery or UpdateQuery from one SQL
+// dialect to another. Translators run when DeploySchema() or UpdateSchame() is
+// called. Translators typically have an "is this translator applicable, perform the
+// translation" format.
+//
+// Ex:
+//
+//	func TranslateDatetimeToText (in query) string {
+//	  if !strings.Contains(in, "DATETIME") {
+//		    return in
+//	  }
+//
+//	  return strings.Replace(in, "DATETIME", "TEXT")
+//	 }
+type Translator func(string) string
+
+// ErrorHandler is a function that determines if an error returned from
+// [database/sql.Exec] when DeploySchema() is called can be ignored. An error handler
+// is typically used to ignore errors that arise from a query being run multiple times
+// but the result already being applied (think, renaming a table or column).
+// Error handlers typically have an "is this error handler applicable, if so check if
+// the error should be ignored".
+//
+// Ex:
+//
+//	func IgnoreDuplicateColumnError (q query, err error) bool {
+//	  if !strings.Contains(q, "ADD COLUMN") && strings.Contains(err.Error(), "duplicate column") {
+//		    return true
+//	  }
+//
+//	  return false
+//	 }
+type ErrorHandler func(string, error) bool
 
 // Supported databases.
 type dbType string
@@ -398,10 +436,10 @@ func (c *Config) Connect() (err error) {
 	//Connect to the database.
 	//
 	//For SQLite, check if the database file exists. This func will not create the
-	//database file. The database file needs to be created first with Deploy(). If
-	//the database is in-memory, we can ignore this error though, since, the database
-	//will never exist yet an is in fact created when Open() and Ping() are called
-	//below.
+	//database file. The database file needs to be created first with DeploySchema().
+	//If the database is in-memory, we can ignore this error though, since, the
+	//database will never exist yet an is in fact created when Open() and Ping() are
+	//called below.
 	if c.IsSQLite() && c.SQLitePath != InMemoryFilePathRacy && c.SQLitePath != InMemoryFilePathRaceSafe {
 		_, err = os.Stat(c.SQLitePath)
 		if os.IsNotExist(err) {
@@ -435,11 +473,11 @@ func (c *Config) Connect() (err error) {
 	//Diagnostic logging, useful for logging out which database you are connected to.
 	switch c.Type {
 	case DBTypeMySQL, DBTypeMariaDB, DBTypeMSSQL:
-		c.infoPrintln("sqldb.Connect", "Connecting to database "+c.Name+" on "+c.Host+" with user "+c.User+".")
+		c.infoLn("sqldb.Connect", "Connecting to database "+c.Name+" on "+c.Host+" with user "+c.User+".")
 	case DBTypeSQLite:
-		c.infoPrintln("sqldb.Connect", "Connecting to database: "+c.SQLitePath+".")
-		c.infoPrintln("sqldb.Connect", "SQLite Library: "+GetSQLiteLibrary()+".")
-		c.infoPrintln("sqldb.Connect", "SQLite PRAGMAs: "+pragmsQueriesToString(c.SQLitePragmas)+".")
+		c.infoLn("sqldb.Connect", "Connecting to database: "+c.SQLitePath+".")
+		c.debugLn("sqldb.Connect", "SQLite Library: "+GetSQLiteLibrary()+".")
+		c.debugLn("sqldb.Connect", "SQLite PRAGMAs: "+pragmsQueriesToString(c.SQLitePragmas)+".")
 	default:
 		//This can never occur because we called validate() above to verify that a
 		//valid database type was provided.
@@ -511,7 +549,7 @@ func (c *Config) validate() (err error) {
 	//error out here if an invalid value was provided since logging is less important.
 	if cfg.LoggingLevel < LogLevelNone || cfg.LoggingLevel > LogLevelDebug {
 		cfg.LoggingLevel = LogLevelDefault
-		cfg.debugPrintln("sqldb.validate", "invalid LoggingLevel, defaulting to LogLevelDefault")
+		cfg.errorLn("sqldb.validate", "invalid LoggingLevel, defaulting to LogLevelDefault")
 	}
 
 	return
@@ -557,8 +595,9 @@ func (c *Config) buildConnectionString(deployingDB bool) (connString string) {
 			pragmasToAdd := pragmsQueriesToString(c.SQLitePragmas)
 			connString += pragmasToAdd
 
-			c.debugPrintln("sqldb.buildConnectionString", "PRAGMA String:", pragmasToAdd)
-			c.debugPrintln("sqldb.buildConnectionString", "Path With PRAGMAS:", connString)
+			c.debugLn("sqldb.buildConnectionString", "PRAGMAs provided:", c.SQLitePragmas)
+			c.debugLn("sqldb.buildConnectionString", "PRAGMA String:", pragmasToAdd)
+			c.debugLn("sqldb.buildConnectionString", "Path With PRAGMAS:", connString)
 		}
 
 	case DBTypeMSSQL:

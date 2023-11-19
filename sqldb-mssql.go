@@ -3,36 +3,12 @@ package sqldb
 // defaults
 const defaultMSSQLPort uint = 1433
 
-// NewMSSQLConfig returns a config for connecting to a Microsoft SQL Server database.
-func NewMSSQLConfig(host string, port uint, name, user, password string) (cfg *Config) {
-	//The returned error can be ignored since it only returns if a bad db type is
-	//provided but we are providing a known-good db type.
-	cfg, _ = NewConfig(DBTypeMSSQL)
-
-	cfg.Host = host
-	cfg.Port = port
-	cfg.Name = name
-	cfg.User = user
-	cfg.Password = password
-
-	return
+// IsMSSQL returns true if a config represents a MS SQL connection.
+func (c *Config) IsMSSQL() bool {
+	return c.Type == DBTypeMSSQL
 }
 
-// DefaultMSSQLConfig initializes the globally accessible package level config with
-// some defaults set.
-func DefaultMSSQLConfig(host string, port uint, name, user, password string) {
-	cfg := NewMSSQLConfig(host, port, name, user, password)
-	config = *cfg
-}
-
-// IsMSSQL returns true if the database is a Microsoft SQL Server database. This is
-// easier than checking for equality against the Type field in the config.
-func (cfg *Config) IsMSSQL() bool {
-	return cfg.Type == DBTypeMSSQL
-}
-
-// IsMSSQL returns true if the database is a Microsoft SQL Server database. This is
-// easier than checking for equality against the Type field in the config.
+// IsMSSQL returns true if a config represents a MS SQL connection.
 func IsMSSQL() bool {
-	return config.IsMariaDB()
+	return cfg.IsMSSQL()
 }
