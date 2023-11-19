@@ -10,38 +10,32 @@ import (
 	"github.com/jmoiron/sqlx"
 )
 
-// UpdateFunc is the format of a function used to update the database schema. The type
-// is defined for easier use when defining the list of UpdateFuncs versus having to
-// type "cfg.UpdateFuncs = []func(*sqlx.Tx) error {...}".
-type UpdateFunc func(*sqlx.Tx) error
+// UpdateFunc is a function used to perform an update schema taks that is more complex
+// thatn just a SQL query that could be provided in an UpdateQuery
+type UpdateFunc func(*sqlx.DB) error
 
 // UpdateSchemaOptions provides options when updating a schema.
-//
-// CloseConnection determines if the database connection should be closed after ths
-// func successfully completes. This was added to support SQLite in-memory databases
-// since each connection to an im-memory db uses a new database, so if we deploy with
-// a connection we need to reuse it to run queries.
 type UpdateSchemaOptions struct {
+	// CloseConnection determines if the database connection should be closed after
+	// running all the DeployQueries and DeployFuncs.//
+	//
+	//This was added to support deploying and then using a SQLite in-memory databse.
+	//Each connection to an in-memory database references a new database, so to run
+	//queries against an in-memory database that was just deployed, we need to keep
+	//the connection open.
 	CloseConnection bool
 }
 
-// UpdateSchemaWithOps updates a database by running the list of UpdateQueries and
-// UpdateFuncs defined in config. This is typically used to add new colums, alter
-// columns, add indexes, or updates values stored in the database.
+// UpdateSchema runs the UpdateQueries and UpdateFuncs specified in a config against
+// the database noted in the config. Use this to add columns, add indexes, rename
+// things, perform data changes, etc.
 //
-// Although each UpdateQuery and DeployFunc should be indempotent, you should still
-// not call this func each time your app starts or otherwise. Typically you would
-// check if the database has already been updated or use a flag, such as  --update-db,
-// to run this func.
+// UpdateQueries will be translated via UpdateQueryTranslators and any UpdateQuery
+// errors will be processed by UpdateQueryErrorHandlers. Neither of these steps apply
+// to UpdateFuncs.
 //
-// When each UpdateQuery is run, if an error occurs the error is passed into each defined
-// UpdateIgnoreErrorFuncs to determine if and how the error needs to be handled.
-// Sometimes an error during a schema update isn't actually an error we need to handle,
-// such as adding a column that already exists. Most times these types of errors occur
-// because the UpdateSchema func is being rerun. The list of funcs you add to
-// UpdateIgnoreErrorFuncs will check the returned error message and query and determine
-// if the error can be ignored.
-func (cfg *Config) UpdateSchemaWithOps(ops UpdateSchemaOptions) (err error) {
+// Typically this func is run when a flag, i.e.: --update-db, is provided.
+func (c *Config) UpdateSchemaWithOps(ops UpdateSchemaOptions) (err error) {
 	//Check if a connection to the database is already established, and if so, use it.
 	//If not, try to connect.
 	//
@@ -49,100 +43,72 @@ func (cfg *Config) UpdateSchemaWithOps(ops UpdateSchemaOptions) (err error) {
 	//that we can support the Deploy option CloseConnection being false. I.e.: we want
 	//to use the same connection we deployed with to update the database. This is used
 	//mostly for SQLite in-memory dbs where we need to reuse the same connection.
-	if !cfg.Connected() {
-		err = cfg.Connect()
+	if !c.Connected() {
+		err = c.Connect()
 		if err != nil {
 			return
 		}
 	}
 
+	//Make sure the config is valid.
+	err = c.validate()
+	if err != nil {
+		return
+	}
+
 	//Check if the connection should be closed after this func completes.
 	if ops.CloseConnection {
-		defer cfg.Close()
+		defer c.Close()
 	}
 
-	//Make sure the config is valid.
-	err = cfg.validate()
-	if err != nil {
-		return
-	}
+	//Get connection to use for deploying.
+	connection := c.Connection()
 
-	//Start a transaction. We use a transaction to update the schema so that either
-	//the entire database is updated successfully or none of the database is updated.
-	//This prevents the database from ending up in a half-updated state.
-	connection := cfg.Connection()
-	tx, err := connection.Beginx()
-	if err != nil {
-		cfg.Close()
-		return
-	}
-	defer tx.Rollback()
+	//Run each UpdateQuery.
+	c.infoPrintln("sqldb.UpdateSchema", "Running UpdateQueries...")
+	for _, q := range c.UpdateQueries {
+		//Translate.
+		q = c.RunUpdateQueryTranslators(q)
 
-	//Run each update query.
-	cfg.infoPrintln("sqldb.UpdateSchema", "Running UpdateQueries...")
-	for _, q := range cfg.UpdateQueries {
-		//Translate the query if needed. This will only translate queries with
-		//CREATE TABLE in the text.
-		q = cfg.runTranslateCreateTableFuncs(q)
-
-		//Translate th query if needed. These translation funcs only affect db schema
-		//updates (i.e.: the Update() func was used.
-		q = cfg.runTranslateUpdateFuncs(q)
-
-		//Log out some info about the query being run for diagnostics.
-		if strings.Contains(q, "CREATE TABLE") {
-			idx := strings.Index(q, "(")
-			if idx > 0 {
-				cfg.infoPrintln(strings.TrimSpace(q[:idx]) + "...")
-			}
+		//Log for diagnostics.
+		if len(q) > 50 {
+			c.infoPrintln(q[:50])
 		} else {
-			cfg.infoPrintln(q)
+			c.infoPrintln(q)
 		}
 
-		//Execute the query. Always log on error so users can identify query that has
-		//an error. Connection always gets closed since an error occured.
-		_, innerErr := tx.Exec(q)
-		if innerErr != nil && !cfg.ignoreUpdateSchemaErrors(q, innerErr) {
+		//Execute the query. If an error occurs, check if it should be ignored.
+		_, innerErr := connection.Exec(q)
+		if innerErr != nil && !c.runUpdateQueryErrorHandlers(q, innerErr) {
 			err = innerErr
-			log.Println("sqldb.UpdateSchema()", "Error with query.", q, innerErr)
-			cfg.Close()
+			log.Println("sqldb.UpdateSchema", "Error with query.", q, err)
+			c.Close()
 			return
 		}
 	}
 	cfg.infoPrintln("sqldb.UpdateSchema", "Running UpdateQueries...done")
 
-	//Run each update func.
+	//Run each UpdateFunc.
 	cfg.infoPrintln("sqldb.UpdateSchema", "Running UpdateFuncs...")
 	for _, f := range cfg.UpdateFuncs {
-		//Get function name for diagnostics.
+		//Get function name for diagnostic logging, since for UpdateQueries above we
+		//log out some or all of each query.
 		rawNameWithPath := runtime.FuncForPC(reflect.ValueOf(f).Pointer()).Name()
 		funcName := path.Base(rawNameWithPath)
-
-		//Log out some info about the func being run for diagnostics.
 		cfg.infoPrintln(funcName)
 
-		//Execute the func. Always log on error so users can identify func that has
-		//an error. Connection always gets closed since an error occured.
-		innerErr := f(tx)
+		//Execute the func.
+		innerErr := f(connection)
 		if innerErr != nil {
 			err = innerErr
-			cfg.errorPrintln("sqldb.UpdateSchema", "Error with UpdateFunc.", funcName)
+			cfg.errorPrintln("sqldb.UpdateSchema", "Error with UpdateFunc.", funcName, err)
 			cfg.Close()
 			return innerErr
 		}
 	}
 	cfg.infoPrintln("sqldb.UpdateSchema", "Running UpdateFuncs...done")
 
-	//Commit transaction now that all UpdateQueries have been run successfully.
-	err = tx.Commit()
-	if err != nil {
-		cfg.Close()
-		return
-	}
-
-	//Close the connection to the database, if needed. We want to keep the connection
-	//open mostly for tests since tests might use an in-memory database (SQLite) and
-	//if the connection is closed the database gets wiped away.
+	//Close the connection to the database, if needed.
 	if ops.CloseConnection {
 		cfg.Close()
 		cfg.debugPrintln("sqldb.UpdateSchama", "Connection closed after success.")
@@ -153,61 +119,41 @@ func (cfg *Config) UpdateSchemaWithOps(ops UpdateSchemaOptions) (err error) {
 	return
 }
 
-// UpdateSchemaWithOps updates the database for the default package level config.
-func UpdateSchemaWithOps(ops UpdateSchemaOptions) (err error) {
-	return config.UpdateSchemaWithOps(ops)
-}
-
-// UpdateSchema runs UpdateSchemaWithOps with some defaults set. This was implemented
-// to support legacy compatibility while expanding the feature set with update options.
-func (cfg *Config) UpdateSchema() (err error) {
-	ops := UpdateSchemaOptions{
-		CloseConnection: true,
+// RunUpdateQueryTranslators runs the list of UpdateQueryTranslators on the provided
+// query. This is run in Update().
+func (c *Config) RunUpdateQueryTranslators(in string) (out string) {
+	for _, t := range c.UpdateQueryTranslators {
+		out = t(in)
 	}
-	return cfg.UpdateSchemaWithOps(ops)
+
+	return out
 }
 
-// UpdateSchema runs UpdateSchemaWithOps with some defaults set for the default package
-// level config. This was implemented to to support legacy compatibility while expanding
-// the feature set with update options.
-func UpdateSchema() (err error) {
-	return config.UpdateSchema()
-}
-
-// ignoreUpdateSchemaErrors handles when an error is returned from an UpdateQuery when
-// run from UpdateSchema(). This is used to handle queries that can fail and aren't
-// really an error (i.e.: adding a column that already exists). Excusable errors can
-// happen because UpdateQueries should be able to run more than once (i.e.: if you run
-// UpdateSchema() each time your app starts).
-//
-// The query to update the schema is passed in so that we can check what an error is
-// in relation to. Sometimes the error returned doesn't provide enough context.
-func (cfg *Config) ignoreUpdateSchemaErrors(query string, err error) bool {
-	//make sure an error was provided
+// runUpdateQueryErrorHandlers runs the list of UpdateQueryErrorHandlers when an error
+// occured from running a UpdateQuery. This is run in Update().
+func (c *Config) runUpdateQueryErrorHandlers(query string, err error) (ignoreError bool) {
+	//Make sure an error occured.
 	if err == nil {
 		return true
 	}
 
-	//Run each UpdateIngoreErrorFunc. This will check if the error returned from running
-	//the query can be safely ignored. Once one function returns "true" (to ignore the
-	//error that occured), the other functions are skipped.
-	for _, f := range cfg.UpdateIgnoreErrorFuncs {
-		ignore := f(*cfg, query, err)
-		if ignore {
-			return true
+	//Run each UpdateQueryErrorHandler and see if any return true to ignore this error.
+	for _, eh := range c.UpdateQueryErrorHandlers {
+		ignoreError = eh(query, err)
+		if ignoreError {
+			return
 		}
 	}
 
 	return false
 }
 
-// UpdateIgnoreErrorFunc is function for handling errors returned when trying to update
-// the schema of your database using UpdateSchema(). The query being run, as well as
-// the error from running the query, are passed in so that the function can determine
-// if this error can be ignored for this query. Each function of this type, and used
-// for this purpose should be very narrowly focused so as not to ignore errors by
-// mistake (false positives).
-type UpdateIgnoreErrorFunc func(Config, string, error) bool
+//
+//
+//
+//
+//
+//
 
 // UFAddDuplicateColumn checks if an error was generated because a column already
 // exists. This typically happens because you are rerunning UpdateSchema() and the

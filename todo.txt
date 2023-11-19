@@ -1,0 +1,16 @@
+rewrite logging
+    - Use ErrorLn, InfoLn, DebugLn.
+    - Better explain logging levels, when each is used, etc. Same for ...Ln funcs.
+    - Improve usage, use error where there are errors, info for more info, debug for everything else.
+
+clean up db-specific files.
+    - Since the older style New() and Default() funcs were removed.
+
+Type() func?
+    - returns config.Type.
+    - Useful for switches?
+    - "func Type() dbType" and "func (c *Config) Type() dbType".
+
+Rewrite and reorganize translation and error ignoring funcs.
+    - New files to organize these?
+    - Better naming convention?
