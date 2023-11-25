@@ -218,7 +218,7 @@ type Config struct {
 	//term is unavailable.
 	//
 	//A DeployQueryErrorHandler function takes a DeployQuery and the error resulting
-	//from Exec as an input and returns true if the error should be ignored.
+	//from [database/sql.Exec] as an input and returns true if the error should be ignored.
 	DeployQueryErrorHandlers []ErrorHandler
 
 	//UpdateQueries is a list of SQL queries used to update a database schema. These
@@ -263,15 +263,21 @@ type Config struct {
 	//This is the underlying sql connection pool. Access this via the Connection()
 	//func to run queries against the database.
 	connection *sqlx.DB
+
+	//connectionString is the connection string used to establish the connection to
+	//the database. This is set upon Connect() being called and is used for debugging.
+	connectionString string
 }
 
-// QueryFunc is a function used to perform a deployment task that is more complex
-// than just a SQL query that could be provided in a DeployQuery.
+// QueryFunc is a function used to perform a deployment or Update task that is more
+// complex than just a SQL query that could be provided in a DeployQuery or UpdateQuery.
 type QueryFunc func(*sqlx.DB) error
 
 // Translator is a function that translates a DeployQuery or UpdateQuery from one SQL
 // dialect to another. Translators run when DeploySchema() or UpdateSchame() is
-// called. Translators typically have an "is this translator applicable, perform the
+// called.
+//
+// Translators typically have an "is this translator applicable, perform the
 // translation" format.
 //
 // Ex:
@@ -289,8 +295,9 @@ type Translator func(string) string
 // [database/sql.Exec] when DeploySchema() is called can be ignored. An error handler
 // is typically used to ignore errors that arise from a query being run multiple times
 // but the result already being applied (think, renaming a table or column).
+//
 // Error handlers typically have an "is this error handler applicable, if so check if
-// the error should be ignored".
+// the error should be ignore, and if so, ignore the error"
 //
 // Ex:
 //
@@ -427,6 +434,7 @@ func (c *Config) Connect() (err error) {
 
 	//Get the connection string used to connect to the database.
 	connString := c.buildConnectionString(false)
+	c.connectionString = connString
 
 	//Get the correct driver based on the database type.
 	//
@@ -547,9 +555,9 @@ func (c *Config) validate() (err error) {
 
 	//Use default logging level if an invalid logging level was provided. Not
 	//error out here if an invalid value was provided since logging is less important.
-	if cfg.LoggingLevel < LogLevelNone || cfg.LoggingLevel > LogLevelDebug {
-		cfg.LoggingLevel = LogLevelDefault
-		cfg.errorLn("sqldb.validate", "invalid LoggingLevel, defaulting to LogLevelDefault")
+	if c.LoggingLevel < LogLevelNone || c.LoggingLevel > LogLevelDebug {
+		c.LoggingLevel = LogLevelDefault
+		c.errorLn("sqldb.validate", "invalid LoggingLevel, defaulting to LogLevelDefault")
 	}
 
 	return
@@ -593,7 +601,13 @@ func (c *Config) buildConnectionString(deployingDB bool) (connString string) {
 		//need to append pragmas as needed.
 		if len(c.SQLitePragmas) != 0 {
 			pragmasToAdd := pragmsQueriesToString(c.SQLitePragmas)
-			connString += pragmasToAdd
+
+			if strings.Contains(connString, "?") {
+				//handle InMemoryFilePathRaceSafe
+				connString += "&" + pragmasToAdd
+			} else {
+				connString += "&" + pragmasToAdd
+			}
 
 			c.debugLn("sqldb.buildConnectionString", "PRAGMAs provided:", c.SQLitePragmas)
 			c.debugLn("sqldb.buildConnectionString", "PRAGMA String:", pragmasToAdd)
@@ -657,7 +671,7 @@ func (c *Config) Close() (err error) {
 	return c.connection.Close()
 }
 
-// Connect handles closing the underlying database connection stored in the package
+// Close handles closing the underlying database connection stored in the package
 // level config.
 func Close() (err error) {
 	return cfg.Close()

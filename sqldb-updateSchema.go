@@ -16,7 +16,7 @@ type UpdateSchemaOptions struct {
 	//Each connection to an in-memory database references a new database, so to run
 	//queries against an in-memory database that was just deployed, we need to keep
 	//the connection open.
-	CloseConnection bool
+	CloseConnection bool //default true
 }
 
 // UpdateSchema runs the UpdateQueries and UpdateFuncs specified in a config against
@@ -28,7 +28,14 @@ type UpdateSchemaOptions struct {
 // to UpdateFuncs.
 //
 // Typically this func is run when a flag, i.e.: --update-db, is provided.
-func (c *Config) UpdateSchemaWithOps(ops UpdateSchemaOptions) (err error) {
+func (c *Config) UpdateSchema(opts *UpdateSchemaOptions) (err error) {
+	//Set default opts if none were provided.
+	if opts == nil {
+		opts = &UpdateSchemaOptions{
+			CloseConnection: true,
+		}
+	}
+
 	//Check if a connection to the database is already established, and if so, use it.
 	//If not, try to connect.
 	//
@@ -50,7 +57,7 @@ func (c *Config) UpdateSchemaWithOps(ops UpdateSchemaOptions) (err error) {
 	}
 
 	//Check if the connection should be closed after this func completes.
-	if ops.CloseConnection {
+	if opts.CloseConnection {
 		defer c.Close()
 	}
 
@@ -102,7 +109,7 @@ func (c *Config) UpdateSchemaWithOps(ops UpdateSchemaOptions) (err error) {
 	c.infoLn("sqldb.UpdateSchema", "Running UpdateFuncs...done")
 
 	//Close the connection to the database, if needed.
-	if ops.CloseConnection {
+	if opts.CloseConnection {
 		c.Close()
 		c.debugLn("sqldb.UpdateSchama", "Connection closed after success.")
 	} else {
@@ -114,12 +121,12 @@ func (c *Config) UpdateSchemaWithOps(ops UpdateSchemaOptions) (err error) {
 
 // RunUpdateQueryTranslators runs the list of UpdateQueryTranslators on the provided
 // query. This is run in Update().
-func (c *Config) RunUpdateQueryTranslators(in string) (out string) {
+func (c *Config) RunUpdateQueryTranslators(q string) string {
 	for _, t := range c.UpdateQueryTranslators {
-		out = t(in)
+		q = t(q)
 	}
 
-	return out
+	return q
 }
 
 // runUpdateQueryErrorHandlers runs the list of UpdateQueryErrorHandlers when an error

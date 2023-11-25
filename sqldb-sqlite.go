@@ -29,6 +29,16 @@ const (
 	InMemoryFilePathRaceSafe = "file::memory:?cache=shared"
 )
 
+// NewSQLite is a shorthand for calling New() and then manually setting the applicable
+// SQLite fields.
+func NewSQLite(path string) *Config {
+	c := New()
+	c.Type = DBTypeSQLite
+	c.SQLitePath = path
+
+	return c
+}
+
 // IsSQLite returns true if a config represents a SQLite connection.
 func (c *Config) IsSQLite() bool {
 	return c.Type == DBTypeSQLite
@@ -124,5 +134,5 @@ func pragmsQueriesToString(pragmas []string) (filenamePragmaString string) {
 		}
 	}
 
-	return "?" + v.Encode()
+	return v.Encode()
 }

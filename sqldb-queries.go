@@ -11,7 +11,7 @@ import "strings"
 //	cols := Columns{
 //		"Fname",
 //		"Birthday",
-//	 "CompanyID",
+//	    "CompanyID",
 //	}
 //
 // colString, valString, _ := cols.ForInsert
