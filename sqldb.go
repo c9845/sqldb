@@ -344,8 +344,8 @@ var cfg *Config
 func New() *Config {
 	c := new(Config)
 
-	c.SQLitePragmas = sqliteDefaultPragmas
-	c.MapperFunc = defaultMapperFunc
+	c.SQLitePragmas = SQLiteDefaultPragmas
+	c.MapperFunc = DefaultMapperFunc
 	c.LoggingLevel = LogLevelDefault
 	c.ConnectionOptions = make(map[string]string)
 
@@ -445,14 +445,14 @@ func Connect() (err error) {
 	return cfg.Connect()
 }
 
-// defaultMapperFunc is the default function used for handling column name formatting
+// DefaultMapperFunc is the default function used for handling column name formatting
 // when retrieving data from the database and matching up to struct field names. No
 // reformatting is done; the column names are returned exactly as they are noted in
 // the database schema. This is unlike [sqlx] that lowercases all column names and
 // thus requires struct tags to match up against exported struct fields.
 //
 // See: https://jmoiron.github.io/sqlx/#mapping
-func defaultMapperFunc(s string) string {
+func DefaultMapperFunc(s string) string {
 	return s
 }
 
@@ -690,56 +690,4 @@ func AddConnectionOption(key, value string) {
 // just build a switch statement from the Config's Type field.
 func Type() dbType {
 	return cfg.Type
-}
-
-// RunDeployTranslators runs the list of translators defined on the given query.
-//
-// This is used when you aren't calling DeploySchema() but you still want to translate
-// a DeployQuery. For example, running a specific DeployQuery as part of UpdateSchema().
-func RunDeployTranslators(in string) (out string) {
-	out = in
-	for _, t := range cfg.DeployQueryTranslators {
-		out = t(out)
-	}
-
-	return out
-}
-
-// RunDeployTranslators runs the list of translators defined on the given query.
-//
-// This is used when you aren't calling DeploySchema() but you still want to translate
-// a DeployQuery. For example, running a specific DeployQuery as part of UpdateSchema().
-func (c *Config) RunDeployTranslators(in string) (out string) {
-	out = in
-	for _, t := range c.DeployQueryTranslators {
-		out = t(out)
-	}
-
-	return out
-}
-
-// RunUpdateTranslators runs the list of translators defined on the given query.
-//
-// This is used when you aren't calling UpdateSchema() but you still want to translate
-// an UpdateQuery.
-func RunUpdateTranslators(in string) (out string) {
-	out = in
-	for _, t := range cfg.UpdateQueryTranslators {
-		out = t(out)
-	}
-
-	return out
-}
-
-// RunUpdateTranslators runs the list of translators defined on the given query.
-//
-// This is used when you aren't calling UpdateSchema() but you still want to translate
-// an UpdateQuery.
-func (c *Config) RunUpdateTranslators(in string) (out string) {
-	out = in
-	for _, t := range c.UpdateQueryTranslators {
-		out = t(out)
-	}
-
-	return out
 }

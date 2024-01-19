@@ -11,7 +11,7 @@ import (
 
 func TestNew(t *testing.T) {
 	c := New()
-	if len(c.SQLitePragmas) != len(sqliteDefaultPragmas) {
+	if len(c.SQLitePragmas) != len(SQLiteDefaultPragmas) {
 		t.FailNow()
 		return
 	}
@@ -336,7 +336,7 @@ func TestIsSQLite(t *testing.T) {
 
 func TestDefaultMapperFunc(t *testing.T) {
 	in := "asdfasdfasdf"
-	out := defaultMapperFunc(in)
+	out := DefaultMapperFunc(in)
 	if in != out {
 		t.Fatal("defaultMapperFunc modified provided string but should not have.")
 		return

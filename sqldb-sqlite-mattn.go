@@ -24,7 +24,10 @@ const (
 	sqliteDriverName = "sqlite3"
 )
 
+// SQLiteDefaultPragmas defines the list of PRAGMA statments to configure SQLite that
+// we use by default.
+//
 // Placeholder so that this variable is defined for this SQLite library. The mattn
 // library defines some default PRAGMAs already so we do not need to define them here.
 // However, we need this variable defined since it is checked for in Connect().
-var sqliteDefaultPragmas = []string{}
+var SQLiteDefaultPragmas = []string{}

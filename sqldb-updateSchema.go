@@ -118,14 +118,43 @@ func (c *Config) UpdateSchema(opts *UpdateSchemaOptions) (err error) {
 	return
 }
 
+// UpdateSchema runs the UpdateQueries and UpdateFuncs specified in a config against
+// the database noted in the config. Use this to add columns, add indexes, rename
+// things, perform data changes, etc.
+//
+// UpdateQueries will be translated via UpdateQueryTranslators and any UpdateQuery
+// errors will be processed by UpdateQueryErrorHandlers. Neither of these steps apply
+// to UpdateFuncs.
+//
+// Typically this func is run when a flag, i.e.: --update-db, is provided.
+func UpdateSchema(opts *UpdateSchemaOptions) (err error) {
+	return cfg.UpdateSchema(opts)
+}
+
 // RunUpdateQueryTranslators runs the list of UpdateQueryTranslators on the provided
-// query. This is run in Update().
-func (c *Config) RunUpdateQueryTranslators(q string) string {
+// query.
+//
+// This func is called in UpdateSchema().
+func (c *Config) RunUpdateQueryTranslators(in string) (out string) {
+	out = in
 	for _, t := range c.UpdateQueryTranslators {
-		q = t(q)
+		out = t(out)
 	}
 
-	return q
+	return out
+}
+
+// RunUpdateQueryTranslators runs the list of UpdateQueryTranslators on the provided
+// query.
+//
+// This func is called in UpdateSchema().
+func RunUpdateQueryTranslators(in string) (out string) {
+	out = in
+	for _, t := range cfg.UpdateQueryTranslators {
+		out = t(out)
+	}
+
+	return out
 }
 
 // runUpdateQueryErrorHandlers runs the list of UpdateQueryErrorHandlers when an error

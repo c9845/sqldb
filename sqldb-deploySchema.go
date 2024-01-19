@@ -167,14 +167,47 @@ func (c *Config) DeploySchema(opts *DeploySchemaOptions) (err error) {
 	return
 }
 
+// DeploySchema runs the DeployQueries and DeployFuncs specified in a config against
+// the database noted in the config. Use this to create your tables, create indexes,
+// etc. This will automatically issue a CREATE DATABASE IF NOT EXISTS query.
+//
+// DeployQueries will be translated via DeployQueryTranslators and any DeployQuery
+// errors will be processed by DeployQueryErrorHandlers. Neither of these steps apply
+// to DeployFuncs.
+//
+// Typically this func is run when a flag, i.e.: --deploy-db, is provided.
+func DeploySchema(opts *DeploySchemaOptions) (err error) {
+	return cfg.DeploySchema(opts)
+}
+
 // RunDeployQueryTranslators runs the list of DeployQueryTranslators on the provided
-// query. This is run in DeploySchema().
-func (c *Config) RunDeployQueryTranslators(q string) string {
+// query.
+//
+// This func is called in DeploySchema() but can also be called manually when you want
+// to translate a DeployQuery (for example, running a specific DeployQuery as part of
+// UpdateSchema).
+func (c *Config) RunDeployQueryTranslators(in string) (out string) {
+	out = in
 	for _, t := range c.DeployQueryTranslators {
-		q = t(q)
+		out = t(out)
 	}
 
-	return q
+	return out
+}
+
+// RunDeployQueryTranslators runs the list of DeployQueryTranslators on the provided
+// query.
+//
+// This func is called in DeploySchema() but can also be called manually when you want
+// to translate a DeployQuery (for example, running a specific DeployQuery as part of
+// UpdateSchema).
+func RunDeployQueryTranslators(in string) (out string) {
+	out = in
+	for _, t := range cfg.DeployQueryTranslators {
+		out = t(out)
+	}
+
+	return out
 }
 
 // runDeployQueryErrorHandlers runs the list of DeployQueryErrorHandlers when an error
