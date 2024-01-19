@@ -1,11 +1,3 @@
-clean up db-specific files.
-    - Since the older style New() and Default() funcs were removed.
-
-Type() func?
-    - returns config.Type.
-    - Useful for switches?
-    - "func Type() dbType" and "func (c *Config) Type() dbType".
-
 Rewrite and reorganize translation and error ignoring funcs.
     - New files to organize these?
     - Better naming convention?

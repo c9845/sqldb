@@ -717,3 +717,14 @@ func (c *Config) AddConnectionOption(key, value string) {
 func AddConnectionOption(key, value string) {
 	cfg.AddConnectionOption(key, value)
 }
+
+// Type return the dbType from a Config.
+//
+// This func is geared toward usage in a switch statement, specifically for when you
+// store your Config in this package's global variable (singleton style). This removes
+// the need to have a bunch of if/elseif blocks calling sqldb.IsMariaDB(), sqldb.IsSQLite(),
+// and so forth. If you store your Config elsewhere, outside of this package, you can
+// just build a switch statement from the Config's Type field.
+func Type() dbType {
+	return cfg.Type
+}

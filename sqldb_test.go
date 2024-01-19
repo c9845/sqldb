@@ -836,3 +836,13 @@ func TestAddConnectionOption(t *testing.T) {
 		return
 	}
 }
+
+func TestType(t *testing.T) {
+	c := NewMariaDB("10.0.0.1", "test", "user", "password")
+	Use(c)
+
+	if Type() != DBTypeMariaDB {
+		t.Fatal("Type() returned incorrect value.", Type())
+		return
+	}
+}
