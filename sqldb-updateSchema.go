@@ -1,7 +1,6 @@
 package sqldb
 
 import (
-	"log"
 	"path"
 	"reflect"
 	"runtime"
@@ -81,7 +80,7 @@ func (c *Config) UpdateSchema(opts *UpdateSchemaOptions) (err error) {
 		_, innerErr := connection.Exec(q)
 		if innerErr != nil && !c.runUpdateQueryErrorHandlers(q, innerErr) {
 			err = innerErr
-			log.Println("sqldb.UpdateSchema", "Error with query.", q, err)
+			c.errorLn("sqldb.UpdateSchema", "Error with query.", q, err)
 			c.Close()
 			return
 		}

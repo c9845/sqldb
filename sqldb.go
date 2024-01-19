@@ -334,19 +334,6 @@ func DBType(s string) dbType {
 	return dbType(s)
 }
 
-// Logging levels, each higher level is inclusive of lower levels; i.e.: if you choose
-// to use LogLevelDebug, all Error and Info logging will also be output.
-type logLevel int
-
-const (
-	LogLevelNone  logLevel = iota //no logging.
-	LogLevelError                 //general errors, most typical use.
-	LogLevelInfo                  //some info on db connections, deployment, updates.
-	LogLevelDebug                 //primarily used during development.
-
-	LogLevelDefault = LogLevelError
-)
-
 var (
 	//ErrConnected is returned when a trying to establish a connection to an already
 	//connected-to database.
@@ -382,11 +369,6 @@ var (
 	//Extra commas are usually due to an empty column name being provided or a comma
 	//being added to the column name by mistake.
 	ErrExtraCommaInColumnString = errors.New("sqldb: extra comma in column name")
-)
-
-var (
-	//ErrInvalidLoggingLevel is returned when an invalid logging level is provided.
-	ErrInvalidLoggingLevel = errors.New("sqldb: invalid logging level")
 )
 
 // cfg is the package-level stored configuration for a database. This is used when
@@ -609,8 +591,8 @@ func (c *Config) buildConnectionString(deployingDB bool) (connString string) {
 				connString += "&" + pragmasToAdd
 			}
 
-			c.debugLn("sqldb.buildConnectionString", "PRAGMAs provided:", c.SQLitePragmas)
-			c.debugLn("sqldb.buildConnectionString", "PRAGMA String:", pragmasToAdd)
+			c.debugLn("sqldb.buildConnectionString", "PRAGMAs provided: ", c.SQLitePragmas)
+			c.debugLn("sqldb.buildConnectionString", "PRAGMA String:    ", pragmasToAdd)
 			c.debugLn("sqldb.buildConnectionString", "Path With PRAGMAS:", connString)
 		}
 

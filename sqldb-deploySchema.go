@@ -1,7 +1,6 @@
 package sqldb
 
 import (
-	"log"
 	"path"
 	"reflect"
 	"runtime"
@@ -130,7 +129,7 @@ func (c *Config) DeploySchema(opts *DeploySchemaOptions) (err error) {
 		_, innerErr := connection.Exec(q)
 		if innerErr != nil && !c.runDeployQueryErrorHandlers(q, innerErr) {
 			err = innerErr
-			log.Println("sqldb.DeploySchema", "Error with query.", q, err)
+			c.errorLn("sqldb.DeploySchema", "Error with query.", q, err)
 			c.Close()
 			return
 		}
