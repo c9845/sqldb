@@ -691,3 +691,55 @@ func AddConnectionOption(key, value string) {
 func Type() dbType {
 	return cfg.Type
 }
+
+// RunDeployTranslators runs the list of translators defined on the given query.
+//
+// This is used when you aren't calling DeploySchema() but you still want to translate
+// a DeployQuery. For example, running a specific DeployQuery as part of UpdateSchema().
+func RunDeployTranslators(in string) (out string) {
+	out = in
+	for _, t := range cfg.DeployQueryTranslators {
+		out = t(out)
+	}
+
+	return out
+}
+
+// RunDeployTranslators runs the list of translators defined on the given query.
+//
+// This is used when you aren't calling DeploySchema() but you still want to translate
+// a DeployQuery. For example, running a specific DeployQuery as part of UpdateSchema().
+func (c *Config) RunDeployTranslators(in string) (out string) {
+	out = in
+	for _, t := range c.DeployQueryTranslators {
+		out = t(out)
+	}
+
+	return out
+}
+
+// RunUpdateTranslators runs the list of translators defined on the given query.
+//
+// This is used when you aren't calling UpdateSchema() but you still want to translate
+// an UpdateQuery.
+func RunUpdateTranslators(in string) (out string) {
+	out = in
+	for _, t := range cfg.UpdateQueryTranslators {
+		out = t(out)
+	}
+
+	return out
+}
+
+// RunUpdateTranslators runs the list of translators defined on the given query.
+//
+// This is used when you aren't calling UpdateSchema() but you still want to translate
+// an UpdateQuery.
+func (c *Config) RunUpdateTranslators(in string) (out string) {
+	out = in
+	for _, t := range c.UpdateQueryTranslators {
+		out = t(out)
+	}
+
+	return out
+}
