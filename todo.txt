@@ -1,3 +1,0 @@
-Rewrite and reorganize translation and error ignoring funcs.
-    - New files to organize these?
-    - Better naming convention?

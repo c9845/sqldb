@@ -5,6 +5,25 @@ import "strings"
 //This file lists a bunch of example ErrorHandler funcs. These funcs are used to
 //ignore/bypass errors returned from running a DeployQuery or UpdateQuery.
 
+// ErrorHandler is a function that determines if an error returned from
+// [database/sql.Exec] when DeploySchema() is called can be ignored. An error handler
+// is typically used to ignore errors that arise from a query being run multiple times
+// but the result already being applied (think, renaming a table or column).
+//
+// Error handlers typically have an "is this error handler applicable, if so check if
+// the error should be ignore, and if so, ignore the error"
+//
+// Ex:
+//
+//	func IgnoreDuplicateColumnError (q query, err error) bool {
+//	  if !strings.Contains(q, "ADD COLUMN") && strings.Contains(err.Error(), "duplicate column") {
+//		    return true
+//	  }
+//
+//	  return false
+//	 }
+type ErrorHandler func(string, error) bool
+
 // IgnoreErrorDuplicateColumn checks if an error occured because a column with the
 // same name already exists. This is useful to for running ALTER TABLE ADD COLUMN or
 // RENAME COLUMN.
@@ -24,12 +43,12 @@ func IgnoreErrorDuplicateColumn(query string, err error) bool {
 // This error usually occurs because UpdateSchema() is being rerun.
 func IgnoreErrorDropUnknownColumn(query string, err error) bool {
 	if strings.Contains(strings.ToUpper(query), "DROP COLUMN") {
-		//MariaDB
+		//MariaDB.
 		if strings.Contains(err.Error(), "check that it exists") {
 			return true
 		}
 
-		//SQLite
+		//SQLite.
 		if strings.Contains(err.Error(), "no such column") {
 			return true
 		}
@@ -59,17 +78,61 @@ func IgnoreErrorSQLiteModify(query string, err error) bool {
 // IgnoreErrorIndexAlreadyExists checks if an error occured because an index with the
 // given name already exists. If you use "IF NOT EXISTS" in your query this error will
 // not occur.
-func IgnoreErrorIndexAlreadyExists(c Config, query string, err error) bool {
+func IgnoreErrorIndexAlreadyExists(query string, err error) bool {
 	if strings.Contains(query, "CREATE INDEX") {
-		//MariaDB
+		//MariaDB.
 		if strings.Contains(err.Error(), "duplicate key name") {
 			return true
 		}
 
-		//SQLite
+		//SQLite.
 		if strings.Contains(err.Error(), "already exists") {
 			return true
 		}
+	}
+
+	return false
+}
+
+// IgnoreErrorDropDoesNotExist checks if an error occured because a column that does
+// not exists is trying to be dropped.
+//
+// This error usually occurs because UpdateSchema() is being rerun.
+func IgnoreErrorDropDoesNotExist(query string, err error) bool {
+	if strings.Contains(query, "DROP") {
+		//MariaDB.
+		if strings.Contains(err.Error(), "check that it exists") {
+			return true
+		}
+
+		//SQLite.
+		if strings.Contains(err.Error(), "unknown column") && !strings.Contains(err.Error(), "foreign key definition") {
+			return true
+		}
+	}
+
+	return false
+}
+
+// IgnoreErrorRenameDoesNotExist checks is an error occured because a column or table
+// that does not exist is trying to be renamed.
+//
+// This error usually occurs because UpdateSchema() is being rerun.
+func IgnoreErrorRenameDoesNotExist(query string, err error) bool {
+	//MariaDB.
+	if strings.Contains(query, "RENAME COLUMN") && strings.Contains(err.Error(), "Unknown column") {
+		return true
+	}
+	if strings.Contains(query, "RENAME TO") && strings.Contains(err.Error(), "Table") && strings.Contains(err.Error(), "already exists") {
+		return true
+	}
+
+	//SQLite.
+	if strings.Contains(query, "RENAME COLUMN") && strings.Contains(err.Error(), "no such column") {
+		return true
+	}
+	if strings.Contains(query, "RENAME TO") && strings.Contains(err.Error(), "no such table") {
+		return true
 	}
 
 	return false

@@ -273,43 +273,6 @@ type Config struct {
 // complex than just a SQL query that could be provided in a DeployQuery or UpdateQuery.
 type QueryFunc func(*sqlx.DB) error
 
-// Translator is a function that translates a DeployQuery or UpdateQuery from one SQL
-// dialect to another. Translators run when DeploySchema() or UpdateSchame() is
-// called.
-//
-// Translators typically have an "is this translator applicable, perform the
-// translation" format.
-//
-// Ex:
-//
-//	func TranslateDatetimeToText (in query) string {
-//	  if !strings.Contains(in, "DATETIME") {
-//		    return in
-//	  }
-//
-//	  return strings.Replace(in, "DATETIME", "TEXT")
-//	 }
-type Translator func(string) string
-
-// ErrorHandler is a function that determines if an error returned from
-// [database/sql.Exec] when DeploySchema() is called can be ignored. An error handler
-// is typically used to ignore errors that arise from a query being run multiple times
-// but the result already being applied (think, renaming a table or column).
-//
-// Error handlers typically have an "is this error handler applicable, if so check if
-// the error should be ignore, and if so, ignore the error"
-//
-// Ex:
-//
-//	func IgnoreDuplicateColumnError (q query, err error) bool {
-//	  if !strings.Contains(q, "ADD COLUMN") && strings.Contains(err.Error(), "duplicate column") {
-//		    return true
-//	  }
-//
-//	  return false
-//	 }
-type ErrorHandler func(string, error) bool
-
 // Supported databases.
 type dbType string
 

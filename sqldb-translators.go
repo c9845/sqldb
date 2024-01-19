@@ -7,6 +7,24 @@ import (
 //This file list a bunch of example Translator funcs. These funcs are used to
 //translate a DeployQuery or UpdateQuery from one SQL database dialect to another.
 
+// Translator is a function that translates a DeployQuery or UpdateQuery from one SQL
+// dialect to another. Translators run when DeploySchema() or UpdateSchame() is
+// called.
+//
+// Translators typically have an "is this translator applicable, perform the
+// translation" format.
+//
+// Ex:
+//
+//	func TranslateDatetimeToText (in query) string {
+//	  if !strings.Contains(in, "DATETIME") {
+//		    return in
+//	  }
+//
+//	  return strings.Replace(in, "DATETIME", "TEXT")
+//	 }
+type Translator func(string) string
+
 // TranslateMariaDBToSQLiteCreateTable translates a CREATE TABLE query from MariaDB
 // or MySQL to SQLite.
 func TranslateMariaDBToSQLiteCreateTable(query string) string {
