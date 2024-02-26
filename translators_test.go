@@ -6,7 +6,7 @@ import (
 
 func TestRunTranslators(t *testing.T) {
 	//Define config.
-	c := NewSQLite(SQLiteInMemoryFilePathRaceSafe)
+	c := NewSQLite(SQLiteInMemoryFilepathRaceSafe)
 	c.DeployQueryTranslators = []Translator{
 		TranslateMariaDBToSQLiteCreateTable,
 	}

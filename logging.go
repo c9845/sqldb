@@ -5,7 +5,10 @@ import (
 	"log"
 )
 
-//This file specifically deals with logging. See the config LoggingLevel field.
+/*
+This file specifically deals with logging for this package. See the config
+LoggingLevel field.
+*/
 
 // Logging levels, each higher level is inclusive of lower levels; i.e.: if you choose
 // to use LogLevelDebug, all Error and Info logging will also be output.

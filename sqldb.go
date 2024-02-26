@@ -5,14 +5,7 @@ a SQL database easier. This provides some wrapping around the [database/sql] pac
 The initial purpose behind this package was to encapsulate commonly used database
 connection, schema deploying and updating, and other boilerplate tasks.
 
-# Global or Local DB Connection
-
-You can use this package in two methods: as a singleton with the database configuration
-and connection stored within this package in a globally accessible variable, or store
-the configuration and connection somewhere else in your application. Storing the data
-yourself allows for connecting to multiple databases at once.
-
-# Usage:
+# Usage
 
 	  //Build a config:
 	  cfg := &sqldb.Config{
@@ -22,6 +15,8 @@ yourself allows for connecting to multiple databases at once.
 
 	  //Use the config as a singleton.
 	  sqldb.Use(cfg)
+
+	  //Connect.
 	  err := sqldb.Connect()
 	  if err != nil {
 		log.Fatalln(err)
@@ -29,6 +24,33 @@ yourself allows for connecting to multiple databases at once.
 	  }
 
 	  c := sqldb.Connection()
+	  err := c.Exec("SELECT * FROM my_table")
+	  if err != nil {
+		log.Fatalln(err)
+		return
+	  }
+
+# Global or Local DB Connection
+
+You can use this package in two methods: as a singleton with the database configuration
+and connection stored within this package in a globally accessible variable, or store
+the configuration and connection somewhere else in your application. Storing the data
+yourself allows for connecting to multiple databases at once.
+
+	  //Storing the config outside of this package.
+	  cfg := &sqldb.Config{
+		Type:       sqldb.DBTypeSqlite,
+		SQLitePath: "/path/to/sqlite.db",
+	  }
+
+	  //Connect. Not calling Connect() directly on the config. No need to call .Use().
+	  err := cfg.Connect()
+	  if err != nil {
+		log.Fatalln(err)
+		return
+	  }
+
+	  c := cfg.Connection()
 	  err := c.Exec("SELECT * FROM my_table")
 	  if err != nil {
 		log.Fatalln(err)
@@ -98,13 +120,9 @@ the same manner, make them more interchangable with the same result.
 
 # Notes
 
-This package uses [github.com/jmoiron/sqlx] instead of the go standard library
+This package uses [github.com/jmoiron/sqlx] instead of the Go standard library
 [database/sql] package because sqlx provides some additional tooling which makes using
 a database a bit easier (i.e.: Get(), Select(), and StructScan()).
-
-Could possible remove sqlx and required users of this package to call
-[github.com/jmoiron/sqlx.NewDb] if a [sqlx.DB] is needed. Could also just do this
-internally, via Config.Connection() and Config.Connectionx()
 */
 package sqldb
 
@@ -394,7 +412,7 @@ func (c *Config) Connect() (err error) {
 	//If the database is in-memory, we can ignore this error though, since, the
 	//database will never exist yet an is in fact created when Open() and Ping() are
 	//called below.
-	if c.IsSQLite() && c.SQLitePath != SQLiteInMemoryFilePathRacy && c.SQLitePath != SQLiteInMemoryFilePathRaceSafe {
+	if c.IsSQLite() && c.SQLitePath != SQLiteInMemoryFilepathRacy && c.SQLitePath != SQLiteInMemoryFilepathRaceSafe {
 		_, err = os.Stat(c.SQLitePath)
 		if os.IsNotExist(err) {
 			return err
@@ -548,6 +566,9 @@ func (c *Config) buildConnectionString(deployingDB bool) (connString string) {
 		//may need to append PRAGMAs as needed. PRAGMAs are appended to end of
 		//filepath as query parameters.
 		if len(c.SQLitePragmas) != 0 {
+			//An error here should rarely occur, and if it does, the path to the
+			//database file was not provided correctly so the only thing we can do
+			//is error out.
 			u, err := url.Parse(c.SQLitePath)
 			if err != nil {
 				log.Fatalln("Could not parse SQLite path.", c.SQLitePath, err)
@@ -561,7 +582,8 @@ func (c *Config) buildConnectionString(deployingDB bool) (connString string) {
 			if len(u.Query()) > 0 {
 				u.RawQuery = u.RawQuery + "&" + pragmasToAdd.Encode()
 			} else {
-				u.RawQuery = "?" + pragmasToAdd.Encode()
+				log.Println("#######", pragmasToAdd, pragmasToAdd.Encode())
+				u.RawQuery = pragmasToAdd.Encode()
 			}
 
 			connString = u.String()

@@ -3,8 +3,8 @@ package sqldb
 import "strings"
 
 // Columns is used to hold columns for a query. This helps in organizing a query you
-// are building and is useful for generating the correct placeholders when needed using
-// the ForSelect(), ForUpdate(), ForInsert() funcs.
+// are building and is useful for generating the correct placeholders when needed
+// using the ForSelect(), ForUpdate(), ForInsert() funcs.
 //
 // Ex:
 //
@@ -22,18 +22,18 @@ type Columns []string
 
 // Bindvars holds the parameters you want to use in a query. This helps in organizing
 // a query you are building. You can use the values stored in this slice when running
-// a query by providing Bindvars... (ex.: c.Get(&var, q, b...) or stmt.Exec(b...). This
-// is typically used when building complex queries and in conjunction with the Columns
-// type.
+// a query by providing Bindvars... (ex.: c.Get(&var, q, b...) or stmt.Exec(b...).
+// This is typically used when building complex queries and in conjunction with the
+//Columns type.
 type Bindvars []interface{}
 
-// buildColumnString takes a slice of strings, representing columns, and returns them as
-// a string to be used in a sql SELECT, INSERT, or UPDATE. This simply formats the columns
-// for the query type correctly (concats them together with a seperator and/or parameter
-// placeholder (i.e.: ?)) and returns the parameter placholder string to be used for the
-// VALUES clause in an INSERT query as needed. Using this func instead of building column
-// list manually ensures column list is formatted correctly and count of parameter
-// placeholders match the count of columns.
+// buildColumnString takes a slice of strings, representing columns, and returns them
+// as a string to be used in a sql SELECT, INSERT, or UPDATE. This simply formats the
+// columns for the query type correctly (concats them together with a seperator and/or
+// parameter placeholder (i.e.: ?)) and returns the parameter placholder string to be
+// used for the VALUES clause in an INSERT query as needed. Using this func instead of
+// building column list manually ensures column list is formatted correctly and count
+// of parameter placeholders match the count of columns.
 //
 // Use ForSelect, ForUpdate, or ForInsert instead.
 func (cols Columns) buildColumnString(forUpdate bool) (colString, valString string, err error) {
@@ -46,8 +46,8 @@ func (cols Columns) buildColumnString(forUpdate bool) (colString, valString stri
 	//Build the strings
 	if forUpdate {
 		//For an UPDATE query, we just append the parameter placeholder to each column
-		//name. The first line here adds the =? to each provided column except the last
-		//in the slice, the second line adds the =? to the last column.
+		//name. The first line here adds the =? to each provided column except the
+		//last in the slice, the second line adds the =? to the last column.
 		colString = strings.Join(cols, "=?,")
 		colString += "=?"
 
@@ -98,9 +98,9 @@ func (cols Columns) ForUpdate() (colString string, err error) {
 	return
 }
 
-// Where is the WHERE statement in a query. This separate type is useful for times when
-// you are passing a WHERE clause into a func and you want a bit more control over what
-// is provided.
+// Where is the WHERE statement in a query. This separate type is useful for times
+// when you are passing a WHERE clause into a func and you want a bit more control
+// over what is provided.
 type Where string
 
 // String converts the Where type into a string type for easier use.

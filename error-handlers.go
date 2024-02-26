@@ -2,8 +2,10 @@ package sqldb
 
 import "strings"
 
-//This file lists a bunch of example ErrorHandler funcs. These funcs are used to
-//ignore/bypass errors returned from running a DeployQuery or UpdateQuery.
+/*
+This file lists a bunch of example ErrorHandler funcs. These funcs are used to
+ignore/bypass errors returned from running a DeployQuery or UpdateQuery.
+*/
 
 // ErrorHandler is a function that determines if an error returned from
 // [database/sql.Exec] when DeploySchema() is called can be ignored. An error handler

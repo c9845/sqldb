@@ -4,8 +4,10 @@ import (
 	"strings"
 )
 
-//This file list a bunch of example Translator funcs. These funcs are used to
-//translate a DeployQuery or UpdateQuery from one SQL database dialect to another.
+/*
+This file list a bunch of example Translator funcs. These funcs are used to
+translate a DeployQuery or UpdateQuery from one SQL database dialect to another.
+*/
 
 // Translator is a function that translates a DeployQuery or UpdateQuery from one SQL
 // dialect to another. Translators run when DeploySchema() or UpdateSchame() is
