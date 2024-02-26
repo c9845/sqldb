@@ -18,7 +18,7 @@ import (
 
 const (
 	//sqliteLibrary is used in logging.
-	sqliteLibrary = "github.com/mattn/go-sqlite3"
+	sqliteLibrary = sqliteLibraryMattn
 
 	//sqliteDriverName is used in Connect() when calling [database/sql.Open].
 	sqliteDriverName = "sqlite3"

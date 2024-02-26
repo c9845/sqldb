@@ -7,26 +7,31 @@ import (
 	"github.com/jmoiron/sqlx"
 )
 
+// library is used for handling the SQLite libraries/drivers that can be used.
+type library string
+
 const (
 	//Possible SQLite libraries. These are used in comparisons, such as when building
 	//the connection string PRAGMAs.
-	sqliteLibraryMattn   = "github.com/mattn/go-sqlite3"
-	sqliteLibraryModernc = "modernc.org/sqlite"
+	sqliteLibraryMattn   library = "github.com/mattn/go-sqlite3"
+	sqliteLibraryModernc library = "modernc.org/sqlite"
+)
 
-	//InMemoryFilePathRacy is the path to provide for SQLitePath when you want to use
-	//an in-memory database instead of a file on disk. This is racy because each call
-	//to Connect() will open a brand new database. If you only call Connect() once
-	//then this is safe to use.
+const (
+	//SQLiteInMemoryFilePathRacy is the path to provide for SQLitePath when you want
+	//to use an in-memory database instead of a file on disk. This is racy because
+	//each call to Connect() will open a brand new database. If you only call
+	//Connect() once then this is safe to use.
 	//
 	//This is good for running tests since then each test runs with a separate
 	//in-memory db.
-	InMemoryFilePathRacy = ":memory:"
+	SQLiteInMemoryFilePathRacy = ":memory:"
 
-	//InMemoryFilePathRaceSafe is the path to provide for SQLitePath when you want to
-	//use an in-memory database instead of a file on disk. This is race safe since
-	//multiple calls of Connect() will connect to the same in-memory database,
+	//SQLiteInMemoryFilePathRaceSafe is the path to provide for SQLitePath when you
+	//want to use an in-memory database instead of a file on disk. This is race safe
+	//since multiple calls of Connect() will connect to the same in-memory database,
 	//although connecting more than once to the same database would be very odd.
-	InMemoryFilePathRaceSafe = "file::memory:?cache=shared"
+	SQLiteInMemoryFilePathRaceSafe = "file::memory:?cache=shared"
 )
 
 // NewSQLite is a shorthand for calling New() and then manually setting the applicable
@@ -61,7 +66,7 @@ func GetSQLiteVersion() (version string, err error) {
 	driver := getDriver(DBTypeSQLite)
 
 	//Connect.
-	conn, err := sqlx.Open(driver, InMemoryFilePathRacy)
+	conn, err := sqlx.Open(driver, SQLiteInMemoryFilePathRacy)
 	if err != nil {
 		return
 	}
@@ -78,24 +83,26 @@ func GetSQLiteVersion() (version string, err error) {
 
 // GetSQLiteLibrary returns the SQLite library that was used to build the binary. The
 // library is set at build/run with go build tags.
-func GetSQLiteLibrary() string {
+func GetSQLiteLibrary() library {
 	return sqliteLibrary
 }
 
-// pragmsQueriesToString takes SQLite PRAGMAs in query format and retuns them in the
-// format needed to be appended to a SQLite database filepath per the in-use SQLite
-// driver.
+// pragmasToURLValues takes SQLite PRAGMAs in SQLite query format and retuns them in
+// a url.Values for appending to a SQLite filepath URL.
 //
 // SQLite PRAGMAs need to be set upon initially connecting to the database. The
-// PRAGMAs are added to the database file's path as query parameters (?...&...).
+// PRAGMAs are added to the database's filepath as query parameters (?...&...).
 // However, the format of these appended query parameters differs between SQLite
-// libraries. This translates PRAGMA statements into the format required by the
-// library the binary is built with.
+// libraries (mattn vs modernc). This func translates PRAGMA statements, written in
+// the SQLite query format, into the filepath format required by the SQLite driver
+// the binary is built with.
 //
-// "PRAGMA busy_timeout = 5000" becomes "_pragma=busy_timeout=5000" when using the
-// modernc library.
-func pragmsQueriesToString(pragmas []string) (filenamePragmaString string) {
-	v := url.Values{}
+// Example:
+// - SQLite Query Format: "PRAGMA busy_timeout = 5000".
+// - Mattn Format:        "_busy_timeout=5000".
+// - Modernc: Format:     "_pragma=busy_timeout=5000".
+func pragmasToURLValues(pragmas []string, lib library) (v url.Values) {
+	v = url.Values{}
 
 	for _, p := range pragmas {
 		//Sanitize, to make replace/stripping of "PRAGMA" keyword easier.
@@ -104,10 +111,9 @@ func pragmsQueriesToString(pragmas []string) (filenamePragmaString string) {
 		//Strip out the PRAGMA keyword.
 		p = strings.TrimPrefix(p, "pragma")
 
-		//Build pragma as expected by library in use.
-		switch GetSQLiteLibrary() {
+		//Build pragma key-value pairs as expected by driver/library in use.
+		switch lib {
 		case sqliteLibraryMattn:
-			//Library's format:  _busy_timeout=5000
 			key, value, found := strings.Cut(p, "=")
 			if !found {
 				continue
@@ -120,7 +126,6 @@ func pragmsQueriesToString(pragmas []string) (filenamePragmaString string) {
 			v.Add(key, value)
 
 		case sqliteLibraryModernc:
-			//Library's format: _pragma=busy_timeout=5000
 			key := "_pragma"
 			value := p
 
@@ -134,5 +139,5 @@ func pragmsQueriesToString(pragmas []string) (filenamePragmaString string) {
 		}
 	}
 
-	return v.Encode()
+	return
 }

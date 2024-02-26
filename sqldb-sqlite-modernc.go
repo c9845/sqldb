@@ -18,7 +18,7 @@ import (
 
 const (
 	//sqliteLibrary is used in logging.
-	sqliteLibrary = "modernc.org/sqlite"
+	sqliteLibrary = sqliteLibraryModernc
 
 	//sqliteDriverName is used in Connect() when calling [database/sql.Open].
 	sqliteDriverName = "sqlite"

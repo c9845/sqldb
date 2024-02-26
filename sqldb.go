@@ -111,6 +111,7 @@ package sqldb
 import (
 	"errors"
 	"fmt"
+	"log"
 	"net"
 	"net/url"
 	"os"
@@ -393,7 +394,7 @@ func (c *Config) Connect() (err error) {
 	//If the database is in-memory, we can ignore this error though, since, the
 	//database will never exist yet an is in fact created when Open() and Ping() are
 	//called below.
-	if c.IsSQLite() && c.SQLitePath != InMemoryFilePathRacy && c.SQLitePath != InMemoryFilePathRaceSafe {
+	if c.IsSQLite() && c.SQLitePath != SQLiteInMemoryFilePathRacy && c.SQLitePath != SQLiteInMemoryFilePathRaceSafe {
 		_, err = os.Stat(c.SQLitePath)
 		if os.IsNotExist(err) {
 			return err
@@ -428,9 +429,10 @@ func (c *Config) Connect() (err error) {
 	case DBTypeMySQL, DBTypeMariaDB, DBTypeMSSQL:
 		c.infoLn("sqldb.Connect", "Connecting to database "+c.Name+" on "+c.Host+" with user "+c.User+".")
 	case DBTypeSQLite:
+		lib := GetSQLiteLibrary()
+
 		c.infoLn("sqldb.Connect", "Connecting to database: "+c.SQLitePath+".")
-		c.debugLn("sqldb.Connect", "SQLite Library: "+GetSQLiteLibrary()+".")
-		c.debugLn("sqldb.Connect", "SQLite PRAGMAs: "+pragmsQueriesToString(c.SQLitePragmas)+".")
+		c.debugLn("sqldb.Connect", "SQLite Library: "+lib+".")
 	default:
 		//This can never occur because we called validate() above to verify that a
 		//valid database type was provided.
@@ -543,19 +545,29 @@ func (c *Config) buildConnectionString(deployingDB bool) (connString string) {
 		connString = c.SQLitePath
 
 		//For SQLite, the connection string is simply a path to a file. However, we
-		//need to append pragmas as needed.
+		//may need to append PRAGMAs as needed. PRAGMAs are appended to end of
+		//filepath as query parameters.
 		if len(c.SQLitePragmas) != 0 {
-			pragmasToAdd := pragmsQueriesToString(c.SQLitePragmas)
-
-			if strings.Contains(connString, "?") {
-				//handle InMemoryFilePathRaceSafe
-				connString += "&" + pragmasToAdd
-			} else {
-				connString += "&" + pragmasToAdd
+			u, err := url.Parse(c.SQLitePath)
+			if err != nil {
+				log.Fatalln("Could not parse SQLite path.", c.SQLitePath, err)
+				os.Exit(1)
+				return
 			}
 
+			lib := GetSQLiteLibrary()
+			pragmasToAdd := pragmasToURLValues(c.SQLitePragmas, lib)
+
+			if len(u.Query()) > 0 {
+				u.RawQuery = u.RawQuery + "&" + pragmasToAdd.Encode()
+			} else {
+				u.RawQuery = "?" + pragmasToAdd.Encode()
+			}
+
+			connString = u.String()
+
 			c.debugLn("sqldb.buildConnectionString", "PRAGMAs provided: ", c.SQLitePragmas)
-			c.debugLn("sqldb.buildConnectionString", "PRAGMA String:    ", pragmasToAdd)
+			c.debugLn("sqldb.buildConnectionString", "PRAGMA String:    ", pragmasToAdd.Encode())
 			c.debugLn("sqldb.buildConnectionString", "Path With PRAGMAS:", connString)
 		}
 
@@ -567,7 +579,10 @@ func (c *Config) buildConnectionString(deployingDB bool) (connString string) {
 		}
 
 		q := url.Values{}
-		q.Add("database", c.Name)
+
+		if !deployingDB {
+			q.Add("database", c.Name)
+		}
 
 		//Handle other connection options.
 		if len(c.ConnectionOptions) > 0 {

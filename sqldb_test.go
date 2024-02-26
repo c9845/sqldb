@@ -154,73 +154,153 @@ func TestValidate(t *testing.T) {
 
 func TestBuildConnectionString(t *testing.T) {
 	//For deploying a MariaDB/MySQL database (note missing database name).
-	c := NewMariaDB("10.0.0.1", "", "user", "password")
-	connString := c.buildConnectionString(true)
-	manuallyBuilt := c.User + ":" + c.Password + "@tcp(" + c.Host + ":" + strconv.FormatUint(uint64(c.Port), 10) + ")/"
-	if connString != manuallyBuilt {
-		t.Fatal("Connection string not built correctly.", connString, manuallyBuilt)
-		return
-	}
+	t.Run("mariadb-deploy", func(t *testing.T) {
+		c := NewMariaDB("10.0.0.1", "", "user", "password")
+		got := c.buildConnectionString(true)
+		expected := c.User + ":" + c.Password + "@tcp(" + c.Host + ":" + strconv.FormatUint(uint64(c.Port), 10) + ")/"
+		if got != expected {
+			t.Log("Got:", got)
+			t.Log("Exp:", expected)
+			t.Fatal("Connection string not built correctly.")
+			return
+		}
+	})
 
-	//For connecting to already deployed MariaDB/MySQL database.
-	c = NewMariaDB("10.0.0.1", "db_name", "user", "password")
-	connString = c.buildConnectionString(false)
-	manuallyBuilt = c.User + ":" + c.Password + "@tcp(" + c.Host + ":" + strconv.FormatUint(uint64(c.Port), 10) + ")/" + c.Name
-	if connString != manuallyBuilt {
-		t.Fatal("Connection string not built correctly.", connString, manuallyBuilt)
-		return
-	}
+	//For connecting to an already existing MariaDB/MySQL database.
+	t.Run("mariadb-existing", func(t *testing.T) {
+		c := NewMariaDB("10.0.0.1", "db_name", "user", "password")
+		got := c.buildConnectionString(false)
+		expected := c.User + ":" + c.Password + "@tcp(" + c.Host + ":" + strconv.FormatUint(uint64(c.Port), 10) + ")/" + c.Name
+		if got != expected {
+			t.Log("Got:", got)
+			t.Log("Exp:", expected)
+			t.Fatal("Connection string not built correctly.")
+			return
+		}
+	})
 
 	//For deploying SQLite.
-	c = NewSQLite("/path/to/sqlite.db")
-	connString = c.buildConnectionString(true)
-	if connString != c.SQLitePath {
-		t.Fatal("Connection string for SQLite should just be the path but wasn't.", connString)
-		return
-	}
+	t.Run("sqlite-deploy", func(t *testing.T) {
+		c := NewSQLite("/path/to/sqlite.db")
+		got := c.buildConnectionString(true)
+		expected := c.SQLitePath
+		if got != expected {
+			t.Log("Got:", got)
+			t.Log("Exp:", expected)
+			t.Fatal("Connection string for SQLite should just be the path but wasn't.")
+			return
+		}
+	})
 
-	//For connecting to already deployed SQLite.
-	c = NewSQLite("/path/to/sqlite.db")
-	connString = c.buildConnectionString(false)
-	if connString != c.SQLitePath {
-		t.Fatal("Connection string for SQLite should just be the path but wasn't.", connString)
-		return
-	}
+	//For connecting to an already existing SQLite database.
+	t.Run("sqlite-existing", func(t *testing.T) {
+		c := NewSQLite("/path/to/sqlite.db")
+		got := c.buildConnectionString(false)
+		expected := c.SQLitePath
+		if got != expected {
+			t.Log("Got:", got)
+			t.Log("Exp:", expected)
+			t.Fatal("Connection string for SQLite should just be the path but wasn't.")
+			return
+		}
+	})
 
-	//Test SQLite with additional PRAGMAs
-	c.SQLitePragmas = []string{"PRAGMA busy_timeout = 5000"}
-	connString = c.buildConnectionString(false)
-	if !strings.Contains(connString, c.SQLitePath) {
-		t.Fatal("Connection string for SQLite should include the path but didn't.", connString)
-		return
-	}
-	if !strings.Contains(connString, "busy_timeout") {
-		t.Fatal("PRAGMAs not added to connection string as expected.", connString)
-		return
-	}
+	//For connecting to an already existing SQLite using PRAGMAs.
+	t.Run("sqlite-with-pragmas", func(t *testing.T) {
+		c := NewSQLite("/path/to/sqlite.db")
+		c.SQLitePragmas = []string{
+			"PRAGMA busy_timeout = 5000",
+		}
 
-	//For deploying mssql.
-	c = NewMSSQL("10.0.0.1", "", "user", "password")
-	connString = c.buildConnectionString(true)
-	manuallyBuilt = "sqlserver://" + c.User + ":" + c.Password + "@" + c.Host + ":" + strconv.FormatUint(uint64(c.Port), 10) + "?database=" + c.Name
-	if connString != manuallyBuilt {
-		t.Fatal("Connection string not built correctly.", connString, manuallyBuilt)
-		return
-	}
+		got := c.buildConnectionString(false)
 
-	//Test MSSQL additional connection parameters.
-	c.AddConnectionOption("encrypt", "false")
-	connString = c.buildConnectionString(true)
-	if !strings.Contains(connString, "encrypt=false") {
-		t.Fatal("Connection option not added to connection string as expected.", connString)
-		return
-	}
+		expected := ""
+		switch GetSQLiteLibrary() {
+		case sqliteLibraryMattn:
+			expected = c.SQLitePath + "?_busy_timeout=5000"
+		case sqliteLibraryModernc:
+			expected = c.SQLitePath + "?_pragma=busy_timeout=5000"
+		}
+
+		if got != expected {
+			t.Log("Got:", got)
+			t.Log("Exp:", expected)
+			t.Fatal("Connection string for SQLite with PRAGMAs is wrong.")
+			return
+		}
+	})
+
+	//In-memory SQLite database, that has a query parameter in it already.
+	t.Run("sqlite-in-memory", func(t *testing.T) {
+		c := NewSQLite(SQLiteInMemoryFilePathRaceSafe)
+		c.SQLitePragmas = []string{
+			"PRAGMA busy_timeout = 5000",
+			"PRAGMA journal_mode = WAL",
+		}
+
+		got := c.buildConnectionString(false)
+
+		expected := ""
+		switch GetSQLiteLibrary() {
+		case sqliteLibraryMattn:
+			expected = c.SQLitePath + "&_busy_timeout=5000&_journal_mode=wal"
+		case sqliteLibraryModernc:
+			expected = c.SQLitePath + "&_pragma=busy_timeout=5000&_pragma=journal_mode=wal"
+		}
+
+		if got != expected {
+			t.Log("Got:", got)
+			t.Log("Exp:", expected)
+			t.Fatal("Connection string for SQLite with PRAGMAs is wrong.")
+			return
+		}
+	})
+
+	//For deploying MS SQL.
+	t.Run("mssql-deploy", func(t *testing.T) {
+		c := NewMSSQL("10.0.0.1", "", "user", "password")
+		got := c.buildConnectionString(true)
+		expected := "sqlserver://" + c.User + ":" + c.Password + "@" + c.Host + ":" + strconv.FormatUint(uint64(c.Port), 10)
+		if got != expected {
+			t.Log("Got:", got)
+			t.Log("Exp:", expected)
+			t.Fatal("Connection string not built correctly.")
+			return
+		}
+	})
+
+	//For connecting to an already existing MS SQL database.
+	t.Run("mssql-existing", func(t *testing.T) {
+		c := NewMSSQL("10.0.0.1", "", "user", "password")
+		got := c.buildConnectionString(false)
+		expected := "sqlserver://" + c.User + ":" + c.Password + "@" + c.Host + ":" + strconv.FormatUint(uint64(c.Port), 10) + "?database=" + c.Name
+		if got != expected {
+			t.Log("Got:", got)
+			t.Log("Exp:", expected)
+			t.Fatal("Connection string not built correctly.")
+			return
+		}
+	})
+
+	//Test MS SQL with additional connection parameters.
+	t.Run("mssql-additional", func(t *testing.T) {
+		c := NewMSSQL("10.0.0.1", "", "user", "password")
+		c.AddConnectionOption("encrypt", "false")
+		got := c.buildConnectionString(false)
+		expected := "sqlserver://" + c.User + ":" + c.Password + "@" + c.Host + ":" + strconv.FormatUint(uint64(c.Port), 10) + "?database=" + c.Name + "&encrypt=false"
+		if got != expected {
+			t.Log("Got:", got)
+			t.Log("Exp:", expected)
+			t.Fatal("Connection string not built correctly.")
+			return
+		}
+	})
 }
 
 func TestConnect(t *testing.T) {
 	//Only test with SQLite since that is the only database type we can be assured
 	//exists/is available on any device that attempts to run this func.
-	c := NewSQLite(InMemoryFilePathRaceSafe)
+	c := NewSQLite(SQLiteInMemoryFilePathRaceSafe)
 
 	err := c.Connect()
 	if err != nil {
@@ -247,7 +327,7 @@ func TestConnect(t *testing.T) {
 
 	//Test with a bad db type.
 	c.Type = DBType("bad")
-	c.SQLitePath = InMemoryFilePathRaceSafe
+	c.SQLitePath = SQLiteInMemoryFilePathRaceSafe
 	err = c.Connect()
 	if err == nil {
 		t.Fatal("Error about bad db type should have occured.")
@@ -256,7 +336,7 @@ func TestConnect(t *testing.T) {
 
 	//Test with a good config and PRAGMA set, check PRAGMA is set.
 	c.Close()
-	c = NewSQLite(InMemoryFilePathRaceSafe)
+	c = NewSQLite(SQLiteInMemoryFilePathRaceSafe)
 	c.SQLitePragmas = []string{
 		"PRAGMA busy_timeout = 5000",
 		//cannot set journal mode to WAL with in-memory db. journal mode is memory.
@@ -344,7 +424,7 @@ func TestDefaultMapperFunc(t *testing.T) {
 }
 
 func TestClose(t *testing.T) {
-	c := NewSQLite(InMemoryFilePathRaceSafe)
+	c := NewSQLite(SQLiteInMemoryFilePathRaceSafe)
 	if c.Type != DBTypeSQLite {
 		t.Fatal("Config doesn't match")
 		return
@@ -384,7 +464,7 @@ func TestClose(t *testing.T) {
 }
 
 func TestDeploySchema(t *testing.T) {
-	c := NewSQLite(InMemoryFilePathRaceSafe)
+	c := NewSQLite(SQLiteInMemoryFilePathRaceSafe)
 	c.LoggingLevel = LogLevelDebug
 
 	createTable := `
@@ -454,7 +534,7 @@ func TestDeploySchema(t *testing.T) {
 	}
 
 	//Try deploying with a bad deploy func.
-	c.SQLitePath = InMemoryFilePathRaceSafe
+	c.SQLitePath = SQLiteInMemoryFilePathRaceSafe
 	insertInitial = func(c *sqlx.DB) error {
 		q := "SELECT INTO users VALUES (?)"
 		_, err := c.Exec(q, "initialuser@example.com")
@@ -474,7 +554,7 @@ func TestDeploySchema(t *testing.T) {
 }
 
 func TestDeploySchemaAndClose(t *testing.T) {
-	c := NewSQLite(InMemoryFilePathRaceSafe)
+	c := NewSQLite(SQLiteInMemoryFilePathRaceSafe)
 	createTable := `
 		CREATE TABLE IF NOT EXISTS users (
 			ID INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
@@ -499,7 +579,7 @@ func TestDeploySchemaAndClose(t *testing.T) {
 }
 
 func TestUpdateSchema(t *testing.T) {
-	c := NewSQLite(InMemoryFilePathRaceSafe)
+	c := NewSQLite(SQLiteInMemoryFilePathRaceSafe)
 
 	//Need to deploy schema first.
 	createTable := `
@@ -566,7 +646,7 @@ func TestUpdateSchema(t *testing.T) {
 	//Note error checking b/c db has not been deployed. If we deploy and close the
 	//db connection, the in-memory db is gone.
 	c.Close()
-	c.SQLitePath = InMemoryFilePathRaceSafe
+	c.SQLitePath = SQLiteInMemoryFilePathRaceSafe
 	err = c.UpdateSchema(updateOpts)
 	if err != nil && !strings.Contains(err.Error(), "no such table") {
 		t.Fatal(err)
@@ -575,7 +655,7 @@ func TestUpdateSchema(t *testing.T) {
 
 	//Test with a bad update func.
 	c.Close()
-	c = NewSQLite(InMemoryFilePathRaceSafe)
+	c = NewSQLite(SQLiteInMemoryFilePathRaceSafe)
 
 	createTable = `
 		CREATE TABLE IF NOT EXISTS users (
@@ -765,57 +845,6 @@ func TestString(t *testing.T) {
 	}
 }
 
-func TestSQLitePragmasAsString(t *testing.T) {
-	p := []string{
-		"PRAGMA journal_mode = WAL",
-		"PRAGMA busy_timeout = 5000",
-	}
-	c := NewSQLite("/path/to/sqlite.db")
-	c.SQLitePragmas = p
-
-	pragmaString := pragmsQueriesToString(c.SQLitePragmas)
-
-	u, err := url.ParseQuery(pragmaString)
-	if err != nil {
-		t.Fatal(err)
-		return
-	}
-	if len(u) != 2 {
-		t.Fatal("PRAGMAs not built correctly", len(u))
-		return
-	}
-
-	switch GetSQLiteLibrary() {
-	case sqliteLibraryMattn:
-		shouldBe := "_journal_mode=wal&_busy_timeout=5000"
-		parsed, err := url.ParseQuery(shouldBe)
-		if err != nil {
-			t.Fatal(err)
-			return
-		}
-
-		enc := parsed.Encode()
-		if pragmaString != enc {
-			t.Fatal("Incorrect PRAGMAs for connection string.", pragmaString, enc)
-			return
-		}
-
-	case sqliteLibraryModernc:
-		shouldBe := "_pragma=journal_mode=wal&_pragma=busy_timeout=5000"
-		parsed, err := url.ParseQuery(shouldBe)
-		if err != nil {
-			t.Fatal(err)
-			return
-		}
-
-		enc := parsed.Encode()
-		if pragmaString != enc {
-			t.Fatal("Incorrect PRAGMAs for connection string.", pragmaString, enc)
-			return
-		}
-	}
-}
-
 func TestAddConnectionOption(t *testing.T) {
 	//Get config to work off of.
 	c := NewMSSQL("10.0.0.1", "db_name", "user1", "password1")
@@ -845,4 +874,98 @@ func TestType(t *testing.T) {
 		t.Fatal("Type() returned incorrect value.", Type())
 		return
 	}
+}
+
+func TestPragmasToURLValues(t *testing.T) {
+	//Test with mattn, single PRAGMA.
+	t.Run("mattn", func(t *testing.T) {
+		lib := sqliteLibraryMattn
+
+		pragmas := []string{
+			"PRAGMA busy_timeout = 5000",
+		}
+
+		got := pragmasToURLValues(pragmas, lib)
+
+		expected := url.Values{}
+		expected.Add("_busy_timeout", "5000")
+
+		if got.Encode() != expected.Encode() {
+			t.Log("Got:", got)
+			t.Log("Exp:", expected)
+			t.Fatal("mismatch for mattn library")
+		}
+	})
+
+	//Test with mattn, multiple PRAGMAs.
+	t.Run("mattn-multi", func(t *testing.T) {
+		lib := sqliteLibraryMattn
+
+		pragmas := []string{
+			"PRAGMA busy_timeout = 5000",
+			"PRAGMA journal_mode = WAL",
+		}
+
+		got := pragmasToURLValues(pragmas, lib)
+
+		expected := url.Values{}
+		expected.Add("_busy_timeout", "5000")
+		expected.Add("_journal_mode", "wal")
+
+		if got.Encode() != expected.Encode() {
+			t.Log("Got:", got)
+			t.Log("Exp:", expected)
+			t.Fatal("mismatch for mattn library")
+			return
+		}
+	})
+
+	//Test with modernc, single PRAGMA
+	t.Run("modernc", func(t *testing.T) {
+		lib := sqliteLibraryModernc
+
+		pragmas := []string{
+			"PRAGMA busy_timeout = 5000",
+		}
+
+		got := pragmasToURLValues(pragmas, lib)
+
+		expected := url.Values{}
+		expected.Add("_pragma", "busy_timeout=5000")
+
+		if got.Encode() != expected.Encode() {
+			t.Log("Got:", got)
+			t.Log("Exp:", expected)
+			t.Fatal("mismatch for modernc library")
+		}
+	})
+
+	//Test with modernc, multiple PRAGMAs.
+	t.Run("modernc-multi", func(t *testing.T) {
+		lib := sqliteLibraryModernc
+
+		pragmas := []string{
+			"PRAGMA busy_timeout = 5000",
+			"PRAGMA journal_mode = WAL",
+		}
+
+		got := pragmasToURLValues(pragmas, lib)
+
+		expected := url.Values{}
+		expected.Add("_pragma", "busy_timeout=5000")
+		expected.Add("_pragma", "journal_mode=wal")
+
+		if got.Encode() != expected.Encode() {
+			t.Log("Got:", got)
+			t.Log("Exp:", expected)
+			t.Fatal("mismatch for modernc library")
+			return
+		}
+		if strings.Count(got.Encode(), "_pragma") != len(pragmas) {
+			t.Log("Got:", got.Encode())
+			t.Log("Exp:", expected.Encode())
+			t.Fatal("mismatch for modernc library")
+			return
+		}
+	})
 }
