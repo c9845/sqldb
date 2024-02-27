@@ -4,6 +4,9 @@ v3.0.0
 - Vastly improved support for translating schema deployment and updating queries.
 - Improved handling of connection strings, especially for SQLite when using PRAGMAs.
 - Cleaned up how database configuration data is stored and used.
+- Documentation is now only within Go files and README.md isn't used. There was a lot
+  of duplication between Go docs and README and it was annoying to keep track of both
+  files.
 
 v2.3.1
 ----------

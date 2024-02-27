@@ -26,6 +26,9 @@ type UpdateSchemaOptions struct {
 // errors will be processed by UpdateQueryErrorHandlers. Neither of these steps apply
 // to UpdateFuncs.
 //
+// UpdateSchemaOptions is a pointer so that in cases where you do not want to provide
+// any options, using the defaults, you can simply provide nil.
+//
 // Typically this func is run when a flag, i.e.: --update-db, is provided.
 func (c *Config) UpdateSchema(opts *UpdateSchemaOptions) (err error) {
 	//Set default opts if none were provided.
@@ -55,7 +58,12 @@ func (c *Config) UpdateSchema(opts *UpdateSchemaOptions) (err error) {
 		return
 	}
 
-	//Check if the connection should be closed after this func completes.
+	//Skip closing the connection if user wants to leave connection open after this
+	//function completes. Leaving the connection open is important for handling
+	//SQLite in-memory databases.
+	//
+	//This is only effective when an error does not occur in the below code. When an
+	//error occurs, Close() is always called.
 	if opts.CloseConnection {
 		defer c.Close()
 	}
@@ -125,6 +133,9 @@ func (c *Config) UpdateSchema(opts *UpdateSchemaOptions) (err error) {
 // UpdateQueries will be translated via UpdateQueryTranslators and any UpdateQuery
 // errors will be processed by UpdateQueryErrorHandlers. Neither of these steps apply
 // to UpdateFuncs.
+//
+// UpdateSchemaOptions is a pointer so that in cases where you do not want to provide
+// any options, using the defaults, you can simply provide nil.
 //
 // Typically this func is run when a flag, i.e.: --update-db, is provided.
 func UpdateSchema(opts *UpdateSchemaOptions) (err error) {

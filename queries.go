@@ -1,31 +1,45 @@
 package sqldb
 
-import "strings"
+import (
+	"errors"
+	"strings"
+)
 
 // Columns is used to hold columns for a query. This helps in organizing a query you
 // are building and is useful for generating the correct placeholders when needed
 // using the ForSelect(), ForUpdate(), ForInsert() funcs.
 //
-// Ex:
+// Example:
 //
 //	cols := Columns{
-//		"Fname",
-//		"Birthday",
+//	    "Fname",
+//	    "Birthday",
 //	    "CompanyID",
 //	}
-//
-// colString, valString, _ := cols.ForInsert
-// //colString will be "Fname,Birthday,CompanyID"
-// //valString will be "?,?,?"
-// Use like: "INSERT INTO users (" + colString + ") VALUES (" + valString + ")"
+//	colString, valString, _ := cols.ForInsert()
+//	//colString will be "Fname,Birthday,CompanyID"
+//	//valString will be "?,?,?"
+//	//Use like: "INSERT INTO users (" + colString + ") VALUES (" + valString + ")"
 type Columns []string
 
 // Bindvars holds the parameters you want to use in a query. This helps in organizing
 // a query you are building. You can use the values stored in this slice when running
 // a query by providing Bindvars... (ex.: c.Get(&var, q, b...) or stmt.Exec(b...).
 // This is typically used when building complex queries and in conjunction with the
-//Columns type.
+// Columns type.
 type Bindvars []interface{}
+
+var (
+	//ErrNoColumnsGiven is returned when trying to build a column list for a query
+	//but no columns were provided.
+	ErrNoColumnsGiven = errors.New("sqldb: no columns provided")
+
+	//ErrExtraCommaInColumnString is returned when building a column string for a
+	//query but an extra comma exists which would cause the query to run incorrectly.
+	//Extra commas are usually due to an empty column name being provided or a comma
+	//being added to the column name by mistake.
+	ErrExtraCommaInColumnString = errors.New("sqldb: extra comma in column name")
+)
 
 // buildColumnString takes a slice of strings, representing columns, and returns them
 // as a string to be used in a sql SELECT, INSERT, or UPDATE. This simply formats the

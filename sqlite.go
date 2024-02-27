@@ -34,6 +34,22 @@ const (
 	SQLiteInMemoryFilepathRaceSafe = "file::memory:?cache=shared"
 )
 
+// DefaultSQLitePragmas defines the list of PRAGMA statments to configure SQLite with
+// by default. These PRAGMAs match the values set for the [github.com/mattn/go-sqlite3]
+// library since that library is more commonly used.
+//
+// The [github.com/mattn/go-sqlite3] library sets some PRAGMAs by default. The
+// [modernc.org/sqlite] library does not define any default PRAGMAs. To make
+// switching between the two libraries/drivers easier, we define some of the more
+// impactful/typical PRAGMAs here so that these PRAGMAs are applied when either
+// library is used. See SQLitePragmas in Config.
+//
+// Reference: https://github.com/mattn/go-sqlite3/blob/ae2a61f847e10e6dd771ecd4e1c55e0421cdc7f9/sqlite3.go#L1086
+var DefaultSQLitePragmas = []string{
+	"PRAGMA busy_timeout = 5000",
+	"PRAGMA synchronous = NORMAL",
+}
+
 // NewSQLite is a shorthand for calling New() and then manually setting the applicable
 // SQLite fields.
 func NewSQLite(path string) *Config {

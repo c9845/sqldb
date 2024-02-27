@@ -29,6 +29,9 @@ type DeploySchemaOptions struct {
 // errors will be processed by DeployQueryErrorHandlers. Neither of these steps apply
 // to DeployFuncs.
 //
+// DeploySchemaOptions is a pointer so that in cases where you do not want to provide
+// any options, using the defaults, you can simply provide nil.
+//
 // Typically this func is run when a flag, i.e.: --deploy-db, is provided.
 func (c *Config) DeploySchema(opts *DeploySchemaOptions) (err error) {
 	//Set default opts if none were provided.
@@ -53,7 +56,7 @@ func (c *Config) DeploySchema(opts *DeploySchemaOptions) (err error) {
 	//Build the connection string used to connect to the database.
 	//
 	//The returned string will not included the database name (for non-SQLite) since
-	//the database may not been deployed yet.
+	//the database may not have been deployed yet.
 	connString := c.buildConnectionString(true)
 
 	//Get the correct driver based on the database type.
@@ -64,7 +67,7 @@ func (c *Config) DeploySchema(opts *DeploySchemaOptions) (err error) {
 	//Create the database, if it doesn't already exist.
 	//
 	//For MariaDB/MySQL, we need to create the actual database on the server.
-	//For SQLite , we need to Ping() the connection so the file is created on disk.
+	//For SQLite, we need to Ping() the connection so the file is created on disk.
 	conn, err := sqlx.Open(driver, connString)
 	if err != nil {
 		return
@@ -100,9 +103,12 @@ func (c *Config) DeploySchema(opts *DeploySchemaOptions) (err error) {
 		return
 	}
 
-	//Skip closing the connection if user wants to leave connection open. This only
-	//matters when an error does not occur, when an error occurs below Close() is
-	//manually called.
+	//Skip closing the connection if user wants to leave connection open after this
+	//function completes. Leaving the connection open is important for handling
+	//SQLite in-memory databases.
+	//
+	//This is only effective when an error does not occur in the below code. When an
+	//error occurs, Close() is always called.
 	if opts.CloseConnection {
 		defer c.Close()
 	}
@@ -174,6 +180,9 @@ func (c *Config) DeploySchema(opts *DeploySchemaOptions) (err error) {
 // DeployQueries will be translated via DeployQueryTranslators and any DeployQuery
 // errors will be processed by DeployQueryErrorHandlers. Neither of these steps apply
 // to DeployFuncs.
+//
+// DeploySchemaOptions is a pointer so that in cases where you do not want to provide
+// any options, using the defaults, you can simply provide nil.
 //
 // Typically this func is run when a flag, i.e.: --deploy-db, is provided.
 func DeploySchema(opts *DeploySchemaOptions) (err error) {

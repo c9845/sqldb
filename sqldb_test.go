@@ -1,13 +1,15 @@
 package sqldb
 
 import (
+	"net/url"
 	"strconv"
+	"strings"
 	"testing"
 )
 
 func TestNew(t *testing.T) {
 	c := New()
-	if len(c.SQLitePragmas) != len(SQLiteDefaultPragmas) {
+	if len(c.SQLitePragmas) != len(DefaultSQLitePragmas) {
 		t.FailNow()
 		return
 	}
@@ -229,8 +231,9 @@ func TestBuildConnectionString(t *testing.T) {
 	t.Run("sqlite-deploy", func(t *testing.T) {
 		c := NewSQLite("/path/to/sqlite.db")
 		got := c.buildConnectionString(true)
-		expected := c.SQLitePath
-		if got != expected {
+		expected := c.SQLitePath //plus some pragmas appended to path.
+
+		if !strings.HasPrefix(got, expected) {
 			t.Log("Got:", got)
 			t.Log("Exp:", expected)
 			t.Fatal("Connection string for SQLite should just be the path but wasn't.")
@@ -242,8 +245,9 @@ func TestBuildConnectionString(t *testing.T) {
 	t.Run("sqlite-existing", func(t *testing.T) {
 		c := NewSQLite("/path/to/sqlite.db")
 		got := c.buildConnectionString(false)
-		expected := c.SQLitePath
-		if got != expected {
+		expected := c.SQLitePath //plus some pragmas appended to path.
+
+		if !strings.HasPrefix(got, expected) {
 			t.Log("Got:", got)
 			t.Log("Exp:", expected)
 			t.Fatal("Connection string for SQLite should just be the path but wasn't.")
@@ -266,6 +270,10 @@ func TestBuildConnectionString(t *testing.T) {
 			expected = c.SQLitePath + "?_busy_timeout=5000"
 		case sqliteLibraryModernc:
 			expected = c.SQLitePath + "?_pragma=busy_timeout=5000"
+
+			//have to handle second equals sign being replaced by %3D.
+			got, _ = url.QueryUnescape(got)
+			expected, _ = url.QueryUnescape(expected)
 		}
 
 		if got != expected {
@@ -291,6 +299,10 @@ func TestBuildConnectionString(t *testing.T) {
 			expected = c.SQLitePath + "&_busy_timeout=5000"
 		case sqliteLibraryModernc:
 			expected = c.SQLitePath + "&_pragma=busy_timeout=5000"
+
+			//have to handle second equals sign being replaced by %3D.
+			got, _ = url.QueryUnescape(got)
+			expected, _ = url.QueryUnescape(expected)
 		}
 
 		if got != expected {

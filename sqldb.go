@@ -5,7 +5,7 @@ a SQL database easier. This provides some wrapping around the [database/sql] pac
 The initial purpose behind this package was to encapsulate commonly used database
 connection, schema deploying and updating, and other boilerplate tasks.
 
-# Usage
+# Basic Usage
 
 	  //Build a config:
 	  cfg := &sqldb.Config{
@@ -13,7 +13,7 @@ connection, schema deploying and updating, and other boilerplate tasks.
 		SQLitePath: "/path/to/sqlite.db",
 	  }
 
-	  //Use the config as a singleton.
+	  //Store the config within the sqldb package for future use.
 	  sqldb.Use(cfg)
 
 	  //Connect.
@@ -32,10 +32,11 @@ connection, schema deploying and updating, and other boilerplate tasks.
 
 # Global or Local DB Connection
 
-You can use this package in two methods: as a singleton with the database configuration
-and connection stored within this package in a globally accessible variable, or store
-the configuration and connection somewhere else in your application. Storing the data
-yourself allows for connecting to multiple databases at once.
+You can use this package via two methods: as a singleton with the database
+configuration and connection stored within this package in a globally accessible
+variable, or store the configuration and connection somewhere else in your
+application. Storing the data yourself allows for connecting to multiple databases
+at once.
 
 	  //Storing the config outside of this package.
 	  cfg := &sqldb.Config{
@@ -59,20 +60,18 @@ yourself allows for connecting to multiple databases at once.
 
 # Deploying a Database
 
-Deploying of a schema is done via DeployQueries and DeployFuncs, along with the
+Deployment of a schema is done via DeployQueries and DeployFuncs, along with the
 associated DeployQueryTranslators and DeployQueryErrorHandlers. DeployQueries are
 just SQL query strings while DeployFuncs are used for more complicated deployment
-scenarios, such as INSERTs that rely on some sort of non-SQL data (ex: data
-calculated by golang code in your application).
+scenarios (such as INSERTing initial data).
 
-DeployQueryTranslators translate DeployQueries from one database type to another
+DeployQueryTranslators translate DeployQueries from one database dialect to another
 (ex: MariaDB to SQLite) since different databases support slightly different
 SQL dialects. This allows you to write your CREATE TABLE or other deployment
-related queries in one database type's format, but then modify the query
-programatically to the format required for another database type. This is extremely
-useful if your application supports multiple database types. Note that
-DeployQueryTranslators do not apply to DeployFuncs since DeployFuncs are more than
-just a SQL query.
+related queries in one database dialect, but then modify the query programatically
+to the dialect required for another database type. This is extremely useful if your
+application supports multiple database types. Note that DeployQueryTranslators do not
+apply to DeployFuncs since DeployFuncs are typically more than just a SQL query.
 
 DeployQueryErrorHandlers is a list of functions that are run when any DeployQuery
 results in an error (as returned by [sql.Exec]). These funcs are used to evaluate,
@@ -82,7 +81,7 @@ DeployQueries and DeployFuncs should be safe to be rerun multiple times, particu
 without INSERTing duplicate data. Use IF NOT EXISTS or check if something exists
 before INSERTing in DeployFuncs.
 
-# Updating a Schema
+# Updating a Database
 
 Updating an existing database schema is done via UpdateQueries and UpdateFuncs, along
 with the associated UpdateQueryTranslators and UpdateQueryErrorHandlers. This
@@ -116,7 +115,8 @@ https://github.com/mattn/go-sqlite3/blob/ae2a61f847e10e6dd771ecd4e1c55e0421cdc7f
 Some of these are just safe defaults, for example, busy_timeout. In order to treat
 the mattn and modernc libraries more similarly, some of these mattn PRAGMAs are also
 set when using the modernc library. This is done to make using both libraries act in
-the same manner, make them more interchangable with the same result.
+the same manner, make them more interchangable with the same result. See
+DefaultSQLitePragmas.
 
 # Notes
 
@@ -142,8 +142,8 @@ import (
 	//library to generate the connection string.
 	"github.com/go-sql-driver/mysql"
 
-	//SQLite driver is imported in other sqldb-sqlite-*.go files based upon build
-	//tag to handle mattn or modernc library being used.
+	//SQLite driver is imported in other sqlite-*.go files based upon build tag to
+	//handle mattn or modernc library being used.
 
 	//MS SQL Server.
 	_ "github.com/denisenkom/go-mssqldb"
@@ -237,7 +237,8 @@ type Config struct {
 	//term is unavailable.
 	//
 	//A DeployQueryErrorHandler function takes a DeployQuery and the error resulting
-	//from [database/sql.Exec] as an input and returns true if the error should be ignored.
+	//from [database/sql.Exec] as an input and returns true if the error should be
+	//ignored.
 	DeployQueryErrorHandlers []ErrorHandler
 
 	//UpdateQueries is a list of SQL queries used to update a database schema. These
@@ -289,7 +290,8 @@ type Config struct {
 }
 
 // QueryFunc is a function used to perform a deployment or Update task that is more
-// complex than just a SQL query that could be provided in a DeployQuery or UpdateQuery.
+// complex than just a SQL query that could be provided in a DeployQuery or
+// UpdateQuery.
 type QueryFunc func(*sqlx.DB) error
 
 // Supported databases.
@@ -341,18 +343,6 @@ var (
 	ErrPasswordNotProvided = errors.New("sqldb: password for database user not provided")
 )
 
-var (
-	//ErrNoColumnsGiven is returned when trying to build a column list for a query
-	//but no columns were provided.
-	ErrNoColumnsGiven = errors.New("sqldb: no columns provided")
-
-	//ErrExtraCommaInColumnString is returned when building a column string for a
-	//query but an extra comma exists which would cause the query to run incorrectly.
-	//Extra commas are usually due to an empty column name being provided or a comma
-	//being added to the column name by mistake.
-	ErrExtraCommaInColumnString = errors.New("sqldb: extra comma in column name")
-)
-
 // cfg is the package-level stored configuration for a database. This is used when
 // you are using this package in a singleton manner. This is populated when Use() is
 // called.
@@ -363,7 +353,7 @@ var cfg *Config
 func New() *Config {
 	c := new(Config)
 
-	c.SQLitePragmas = SQLiteDefaultPragmas
+	c.SQLitePragmas = DefaultSQLitePragmas
 	c.MapperFunc = DefaultMapperFunc
 	c.LoggingLevel = LogLevelDefault
 	c.ConnectionOptions = make(map[string]string)
@@ -701,6 +691,8 @@ func Connection() *sqlx.DB {
 // Using this func is just easier then calling map[string]string{"key", "value"}.
 // This does not check if the key already exist, it will simply add a duplicate
 // key-value pair.
+//
+// Typically this is only needed for connecting to MSSQL databases.
 func (c *Config) AddConnectionOption(key, value string) {
 	//Initialize map if needed.
 	if c.ConnectionOptions == nil {
@@ -722,9 +714,13 @@ func AddConnectionOption(key, value string) {
 //
 // This func is geared toward usage in a switch statement, specifically for when you
 // store your Config in this package's global variable (singleton style). This removes
-// the need to have a bunch of if/elseif blocks calling sqldb.IsMariaDB(), sqldb.IsSQLite(),
-// and so forth. If you store your Config elsewhere, outside of this package, you can
-// just build a switch statement from the Config's Type field.
+// the need to have a bunch of if/else-if blocks calling sqldb.IsMariaDB(),
+// sqldb.IsSQLite(), and so forth. If you store your Config elsewhere, outside of this
+// package, you can just build a switch statement from the Config's Type field.
+//
+// This func is only defined for the globally-stored Config since if you want to get
+// the type of database from a Config you have stored elsewhere, you can just retrieve
+// it with something like "cfg.Type".
 func Type() dbType {
 	return cfg.Type
 }
