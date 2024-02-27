@@ -57,6 +57,7 @@ func (c *Config) DeploySchema(opts *DeploySchemaOptions) (err error) {
 	//
 	//The returned string will not included the database name (for non-SQLite) since
 	//the database may not have been deployed yet.
+	c.debugLn("sqldb.DeploySchema", "Getting connection string before deploying...")
 	connString := c.buildConnectionString(true)
 
 	//Get the correct driver based on the database type.
@@ -98,6 +99,7 @@ func (c *Config) DeploySchema(opts *DeploySchemaOptions) (err error) {
 		return
 	}
 
+	c.debugLn("sqldb.DeploySchema", "Connecting to deployed database...")
 	err = c.Connect()
 	if err != nil {
 		return

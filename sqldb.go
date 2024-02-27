@@ -133,6 +133,7 @@ import (
 	"net"
 	"net/url"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -437,10 +438,7 @@ func (c *Config) Connect() (err error) {
 	case DBTypeMySQL, DBTypeMariaDB, DBTypeMSSQL:
 		c.infoLn("sqldb.Connect", "Connecting to database "+c.Name+" on "+c.Host+" with user "+c.User+".")
 	case DBTypeSQLite:
-		lib := GetSQLiteLibrary()
-
 		c.infoLn("sqldb.Connect", "Connecting to database: "+c.SQLitePath+".")
-		c.debugLn("sqldb.Connect", "SQLite Library: "+lib+".")
 	default:
 		//This can never occur because we called validate() above to verify that a
 		//valid database type was provided.
@@ -572,15 +570,19 @@ func (c *Config) buildConnectionString(deployingDB bool) (connString string) {
 			if len(u.Query()) > 0 {
 				u.RawQuery = u.RawQuery + "&" + pragmasToAdd.Encode()
 			} else {
-				log.Println("#######", pragmasToAdd, pragmasToAdd.Encode())
 				u.RawQuery = pragmasToAdd.Encode()
 			}
 
 			connString = u.String()
 
-			c.debugLn("sqldb.buildConnectionString", "PRAGMAs provided: ", c.SQLitePragmas)
+			//Sort the PRAGMAs since Encode() does this and this makes looking at the
+			//two logging lines easier since the order matches.
+			sort.Strings(c.SQLitePragmas)
+
+			c.debugLn("sqldb.buildConnectionString", "PRAGMAs provided: ", strings.Join(c.SQLitePragmas, "; "))
 			c.debugLn("sqldb.buildConnectionString", "PRAGMA String:    ", pragmasToAdd.Encode())
-			c.debugLn("sqldb.buildConnectionString", "Path With PRAGMAS:", connString)
+			c.debugLn("sqldb.buildConnectionString", "Path With PRAGMAs:", connString)
+			c.debugLn("sqldb.buildConnectionString", "SQLite Library:   ", lib)
 		}
 
 	case DBTypeMSSQL:
@@ -640,7 +642,11 @@ func getDriver(t dbType) (driver string) {
 
 // Close handles closing the underlying database connection stored in the config.
 func (c *Config) Close() (err error) {
-	return c.connection.Close()
+	if c.Connected() {
+		return c.connection.Close()
+	}
+
+	return
 }
 
 // Close handles closing the underlying database connection stored in the package
