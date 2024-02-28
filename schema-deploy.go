@@ -131,7 +131,9 @@ func (c *Config) DeploySchema(opts *DeploySchemaOptions) (err error) {
 		//logging entries.
 		ql, _, found := strings.Cut(strings.TrimSpace(q), "\n")
 		if found {
-			c.infoLn("DeployQuery:", ql+"...")
+			c.infoLn("DeployQuery:", ql)
+		} else if maxLen := 70; len(q) > maxLen {
+			c.infoLn("DeployQuery:", q[:maxLen]+"...")
 		} else {
 			c.infoLn("DeployQuery:", q)
 		}

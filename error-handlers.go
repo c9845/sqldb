@@ -32,7 +32,7 @@ type ErrorHandler func(string, error) bool
 //
 // This error usually occurs because UpdateSchema() is being rerun.
 func IgnoreErrorDuplicateColumn(query string, err error) bool {
-	if strings.Contains(strings.ToUpper(query), "ADD COLUMN") && strings.Contains(err.Error(), "duplicate column") {
+	if strings.Contains(strings.ToUpper(query), "ADD COLUMN") && strings.Contains(err.Error(), "Duplicate column") {
 		return true
 	}
 

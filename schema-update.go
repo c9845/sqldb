@@ -4,6 +4,7 @@ import (
 	"path"
 	"reflect"
 	"runtime"
+	"strings"
 )
 
 // UpdateSchemaOptions provides options when updating a schema.
@@ -82,8 +83,11 @@ func (c *Config) UpdateSchema(opts *UpdateSchemaOptions) (err error) {
 		//
 		//Trim logging length just to prevent super long queries from causing long
 		//logging entries.
-		if len(q) > 50 {
-			c.infoLn("UpdateQuery:", q[:70]+"...")
+		ql, _, found := strings.Cut(strings.TrimSpace(q), "\n")
+		if found {
+			c.infoLn("UpdateQuery:", ql)
+		} else if maxLen := 70; len(q) > maxLen {
+			c.infoLn("UpdateQuery:", q[:maxLen]+"...")
 		} else {
 			c.infoLn("UpdateQuery:", q)
 		}
