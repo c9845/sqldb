@@ -77,11 +77,15 @@ func (c *Config) UpdateSchema(opts *UpdateSchemaOptions) (err error) {
 		//Translate.
 		q = c.RunUpdateQueryTranslators(q)
 
-		//Log for diagnostics.
+		//Log for diagnostics. Seeing queries is sometimes nice to see what is
+		//happening.
+		//
+		//Trim logging length just to prevent super long queries from causing long
+		//logging entries.
 		if len(q) > 50 {
-			c.infoLn(q[:50])
+			c.infoLn("UpdateQuery:", q[:70]+"...")
 		} else {
-			c.infoLn(q)
+			c.infoLn("UpdateQuery:", q)
 		}
 
 		//Execute the query. If an error occurs, check if it should be ignored.
@@ -102,7 +106,7 @@ func (c *Config) UpdateSchema(opts *UpdateSchemaOptions) (err error) {
 		//log out some or all of each query.
 		rawNameWithPath := runtime.FuncForPC(reflect.ValueOf(f).Pointer()).Name()
 		funcName := path.Base(rawNameWithPath)
-		c.infoLn(funcName)
+		c.infoLn("UpdateFunc:", funcName)
 
 		//Execute the func.
 		innerErr := f(connection)

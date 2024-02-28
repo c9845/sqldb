@@ -126,6 +126,9 @@ func (c *Config) DeploySchema(opts *DeploySchemaOptions) (err error) {
 
 		//Log for diagnostics. Seeing queries is sometimes nice to see what is
 		//happening.
+		//
+		//Trim logging length just to prevent super long queries from causing long
+		//logging entries.
 		ql, _, found := strings.Cut(strings.TrimSpace(q), "\n")
 		if found {
 			c.infoLn("DeployQuery:", ql+"...")
