@@ -1,6 +1,7 @@
 package sqldb
 
 import (
+	"strings"
 	"testing"
 )
 
@@ -19,6 +20,12 @@ func TestRunTranslators(t *testing.T) {
 			Password TEXT NOT NULL,
 			DatetimeCreated DATETIME DEFAULT UTC_TIMESTAMP,
 			FileBlob MEDIUMBLOB NOT NULL DEFAULT "",
+			IntColumn INT NOT NULL,
+			VarcharToText VARCHAR(255) NOT NULL,
+			DecimalToReal DECIMAL(10,4) NOT NULL DEFAULT 1.1234,
+			BoolToInt BOOL NOT NULL DEFAULT 0,
+			DateToText DATE NOT NULL,
+			TimeToText TIME NOT NULL,
 			
 			PRIMARY KEY(ID)
 		)
@@ -31,10 +38,16 @@ func TestRunTranslators(t *testing.T) {
 	sqliteExpected := `
 		CREATE TABLE IF NOT EXISTS users (
 			ID INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
-			Username VARCHAR(255) NOT NULL,
+			Username TEXT NOT NULL,
 			Password TEXT NOT NULL,
 			DatetimeCreated TEXT DEFAULT CURRENT_TIMESTAMP,
-			FileBlob BLOB NOT NULL DEFAULT ""
+			FileBlob BLOB NOT NULL DEFAULT "",
+			IntColumn INTEGER NOT NULL,
+			VarcharToText TEXT NOT NULL,
+			DecimalToReal REAL NOT NULL DEFAULT 1.1234,
+			BoolToInt INTEGER NOT NULL DEFAULT 0,
+			DateToText TEXT NOT NULL,
+			TimeToText TEXT NOT NULL
 			
 			
 		)
@@ -43,6 +56,22 @@ func TestRunTranslators(t *testing.T) {
 	//Translate.
 	sqliteTranslated := c.RunDeployQueryTranslators(mariadb)
 	if sqliteExpected != sqliteTranslated {
+		expectedLines := strings.Split(sqliteExpected, "\n")
+		translatedLines := strings.Split(sqliteTranslated, "\n")
+
+		for index, line := range expectedLines {
+			if index > len(expectedLines) {
+				t.Log("Mismatched line count")
+				break
+			}
+
+			if line != translatedLines[index] {
+				t.Log("Mismatch at line", index)
+				t.Log(line)
+				t.Log(translatedLines[index])
+			}
+		}
+
 		t.Fatal("Bad translation.", sqliteExpected, sqliteTranslated)
 	}
 }
