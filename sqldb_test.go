@@ -115,6 +115,15 @@ func TestConnect(t *testing.T) {
 		t.Fatal("Connection not showing connected as it should!")
 		return
 	}
+
+	//Test with a bad path.
+	c.Close()
+	c.SQLitePath = "/path/is/bad.db"
+	err = c.Connect()
+	if err == nil {
+		t.Fatal("error should have occured because path does not exist.")
+		return
+	}
 }
 
 func TestDefaultMapperFunc(t *testing.T) {
@@ -196,6 +205,42 @@ func TestValidate(t *testing.T) {
 	err = c.validate()
 	if err == nil {
 		t.Fatal("Error about bad db type should have occured in validate.")
+		return
+	}
+
+	//Test using New... config builders.
+	host := "10.0.0.1"
+	dbName := "db_name"
+	user := "user"
+	password := "password"
+	cfg := NewMariaDB(host, dbName, user, password)
+	if err = cfg.validate(); err != nil {
+		t.Fatal(err)
+		return
+	}
+
+	cfg = NewMySQL(host, dbName, user, password)
+	if err = cfg.validate(); err != nil {
+		t.Fatal(err)
+		return
+	}
+
+	cfg = NewMSSQL(host, dbName, user, password)
+	if err = cfg.validate(); err != nil {
+		t.Fatal(err)
+		return
+	}
+
+	cfg = NewSQLite("/path/to/sqlite.db")
+	if err = cfg.validate(); err != nil {
+		t.Fatal(err)
+		return
+	}
+
+	//Bad logging level.
+	cfg.LoggingLevel = -100
+	if err = cfg.validate(); err != nil {
+		t.Fatal(err)
 		return
 	}
 }
@@ -425,6 +470,19 @@ func TestAddConnectionOption(t *testing.T) {
 
 	//Make sure connection option was saved.
 	vFound, ok := c.ConnectionOptions[k]
+	if !ok {
+		t.Fatal("Could not find key in connection options.")
+		return
+	}
+	if vFound != v {
+		t.Fatal("Connection option value mismatch.", vFound, v)
+		return
+	}
+
+	//Make sure blank map is populated if map doesn't exist.
+	c.ConnectionOptions = nil
+	c.AddConnectionOption(k, v)
+	vFound, ok = c.ConnectionOptions[k]
 	if !ok {
 		t.Fatal("Could not find key in connection options.")
 		return

@@ -10,6 +10,7 @@ func NewMSSQL(host, dbName, user, password string) *Config {
 	c.Type = DBTypeMSSQL
 	c.Host = host
 	c.Port = defaultMSSQLPort
+	c.Name = dbName
 	c.User = user
 	c.Password = password
 

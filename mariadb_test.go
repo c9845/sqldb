@@ -10,7 +10,7 @@ func TestNewMariaDB(t *testing.T) {
 
 	c := NewMariaDB(host, dbName, user, password)
 	if c.Type != DBTypeMariaDB {
-		t.FailNow()
+		t.Fatal("wrong db type", c.Type)
 		return
 	}
 

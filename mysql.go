@@ -10,6 +10,7 @@ func NewMySQL(host, dbName, user, password string) *Config {
 	c.Type = DBTypeMySQL
 	c.Host = host
 	c.Port = defaultMySQLPort
+	c.Name = dbName
 	c.User = user
 	c.Password = password
 
