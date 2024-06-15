@@ -10,6 +10,7 @@ func NewMariaDB(host, dbName, user, password string) *Config {
 	c.Type = DBTypeMariaDB
 	c.Host = host
 	c.Port = defaultMariaDBPort
+	c.Name = dbName
 	c.User = user
 	c.Password = password
 
