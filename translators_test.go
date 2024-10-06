@@ -9,7 +9,10 @@ func TestRunTranslators(t *testing.T) {
 	//Define config.
 	c := NewSQLite(SQLiteInMemoryFilepathRaceSafe)
 	c.DeployQueryTranslators = []Translator{
-		TranslateMariaDBToSQLiteCreateTable,
+		TranslateMariaDBToSQLite,
+	}
+	c.UpdateQueryTranslators = []Translator{
+		TranslateMariaDBToSQLite,
 	}
 
 	//MariaDB/MySQL query.
@@ -73,5 +76,14 @@ func TestRunTranslators(t *testing.T) {
 		}
 
 		t.Fatal("Bad translation.", sqliteExpected, sqliteTranslated)
+	}
+
+	//Update schema query...
+	mariadb = "ALTER TABLE users ADD COLUMN BoolToInteger BOOL NOT NULL DEFAULT 0"
+	sqliteExpected = "ALTER TABLE users ADD COLUMN BoolToInteger INTEGER NOT NULL DEFAULT 0"
+
+	sqliteTranslated = c.RunUpdateQueryTranslators(mariadb)
+	if sqliteExpected != sqliteTranslated {
+		t.Fatal("Bad translation.")
 	}
 }

@@ -27,14 +27,10 @@ translate a DeployQuery or UpdateQuery from one SQL database dialect to another.
 //	 }
 type Translator func(string) string
 
-// TranslateMariaDBToSQLiteCreateTable translates a CREATE TABLE query from the
-// MariaDB/MySQL dialect to SQLite dialect.
-func TranslateMariaDBToSQLiteCreateTable(query string) string {
-	//Only applies to CREATE TABLE queries...
-	if !strings.Contains(query, "CREATE TABLE") {
-		return query
-	}
-
+// TranslateMariaDBToSQLite translates a query written in MariaDB format to SQLite
+// format. This translator is meant to be used for CREATE TABLE and ALTER TABLE
+// queries only.
+func TranslateMariaDBToSQLite(query string) string {
 	//Change INT to INTEGER since SQLite defines INTEGER as a data type and INT as a
 	//type affinity. This is really just an idiomatic thing and doesn't affect queries
 	//at all.
